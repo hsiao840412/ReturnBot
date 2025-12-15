@@ -15,4 +15,11 @@
     * **Excel 模板填充：** 自動將 CSV 數據寫入 Excel 模板中的「KBB&KGB invoice」與「ePacking List」工作表。
     * **動態調整：** 根據 CSV 數據筆數，自動在 Excel 發票工作表中插入/刪除列，確保格式正確。
 * **DHL 上傳檔生成：** 針對 Mail-in KBB 和一般 KBB 類型，自動生成 DHL 貨物上傳所需的 CSV 檔案，包含國家代碼和預估重量。
-* **條碼支援 (Battery)：** 針對「單獨鋰電池 KBB」，自動將數據填入「條碼」工作表，並複製公式以產生所需條碼。
+* **條碼支援：** 針對「單獨鋰電池 KBB」，自動將數據填入「條碼」工作表，並複製公式以產生所需條碼。
+
+##  安裝與使用 
+
+1.  前往 [Releases](https://github.com/hsiao840412/ReturnBot/releases) 頁面下載最新版本的 `ReturnBot.dmg`。
+2.  開啟後將 App 拖入「應用程式」資料夾。
+3.  打開終端機複製 “xattr -cr `"App拉進去"` 然後 Return。
+4.  視需求安裝條碼字體
