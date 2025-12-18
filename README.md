@@ -1,6 +1,6 @@
 # 🤖 ReturnBot - 退料機器人 v2.0
 
-一個基於 Python 和 `tkinter` 的桌面應用程式，用於自動化生成和填寫 Apple 維修退料流程所需的 Excel (KBB/Mail-in) 文件，大幅提高處理效率。
+一個基於 Python 的桌面應用程式，用於自動化生成和填寫 Apple 維修退料流程所需的 Excel (KBB/Mail-in) 文件，大幅提高處理效率。
 
 ## ✨ 核心功能
 
