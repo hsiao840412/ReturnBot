@@ -18,8 +18,7 @@ except ImportError:
 class ReturnBotV1_2:
     def __init__(self, root):
         self.root = root
-        # === 版本號 v1.4 (KBB Battery Format Fix) ===
-        self.root.title("退料機器人 v2.0") 
+        self.root.title("退料機器人 v2.1") 
         self.root.geometry("520x680")
         self.root.resizable(False, False)
 
@@ -125,7 +124,7 @@ class ReturnBotV1_2:
         self.gen_btn.config(state="disabled")
         self.progress.pack(pady=(20, 5))
         self.progress.start(10)
-        self.status_label.config(text="正在呼叫 Excel 計算中，請稍候...", foreground="#008000")
+        self.status_label.config(text="正在呼叫 Excel 編輯中，請稍候...", foreground="#008000")
         
         thread = threading.Thread(target=self.run_excel_task)
         thread.start()
@@ -134,11 +133,41 @@ class ReturnBotV1_2:
         if pd.isna(country_str): return "CN"
         name = str(country_str).strip()
         mapping = {
-            "中國大陸": "CN", "China": "CN",
-            "台灣": "TW", "Taiwan": "TW",
-            "新加坡": "SG", "Singapore": "SG",
-            "美國": "US", "United States": "US",
-            "越南": "VN", "Vietnam": "VN"
+            # 亞洲 (Asia)
+            "中國大陸": "CN", "CHINA": "CN", "PRC": "CN", "中国": "CN",
+            "台灣": "TW", "TAIWAN": "TW", "ROC": "TW",
+            "香港": "HK", "HONG KONG": "HK",
+            "澳門": "MO", "MACAU": "MO",
+            "新加坡": "SG", "SINGAPORE": "SG",
+            "越南": "VN", "VIETNAM": "VN",
+            "日本": "JP", "JAPAN": "JP",
+            "韓國": "KR", "SOUTH KOREA": "KR", "KOREA": "KR",
+            "泰國": "TH", "THAILAND": "TH",
+            "馬來西亞": "MY", "MALAYSIA": "MY",
+            "菲律賓": "PH", "PHILIPPINES": "PH",
+            "印尼": "ID", "INDONESIA": "ID",
+            "印度": "IN", "INDIA": "IN",
+
+            # 北美 (North America)
+            "美國": "US", "UNITED STATES": "US", "USA": "US",
+            "加拿大": "CA", "CANADA": "CA",
+
+            # 歐洲 (Europe)
+            "英國": "GB", "UNITED KINGDOM": "GB", "UK": "GB",
+            "德國": "DE", "GERMANY": "DE",
+            "法國": "FR", "FRANCE": "FR",
+            "義大利": "IT", "ITALY": "IT",
+            "荷蘭": "NL", "NETHERLANDS": "NL",
+            "西班牙": "ES", "SPAIN": "ES",
+            "瑞士": "CH", "SWITZERLAND": "CH",
+
+            # 大洋洲 (Oceania)
+            "澳洲": "AU", "澳大利亞": "AU", "AUSTRALIA": "AU",
+            "紐西蘭": "NZ", "NEW ZEALAND": "NZ",
+            
+            # 其他
+            "巴西": "BR", "BRAZIL": "BR",
+            "俄羅斯": "RU", "RUSSIA": "RU",
         }
         for key, val in mapping.items():
             if key in name: return val
