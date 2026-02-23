@@ -6,6 +6,10 @@ import platform
 import subprocess
 import threading
 import sys
+import json
+import urllib.request
+import webbrowser
+import ssl  # 新增：用於處理 SSL 憑證問題
 from datetime import datetime
 from pathlib import Path
 
@@ -17,8 +21,12 @@ except ImportError:
 
 class ReturnBotV1_2:
     def __init__(self, root):
+        # === 版本與 GitHub 設定 ===
+        self.current_version = "2.2"
+        self.github_repo = "hsiao840412/ReturnBot" 
+        
         self.root = root
-        self.root.title("退料機器人 v2.1") 
+        self.root.title(f"退料機器人 v{self.current_version}") 
         self.root.geometry("520x680")
         self.root.resizable(False, False)
 
@@ -44,7 +52,6 @@ class ReturnBotV1_2:
             if os.path.exists(icon_path):
                 logo_img = tk.PhotoImage(file=icon_path)
                 self.root.iconphoto(True, logo_img)
-                self.root.tk.call('wm', 'iconphoto', self.root._w, logo_img)
         except:
             self.base_folder = os.getcwd()
             pass
@@ -57,6 +64,40 @@ class ReturnBotV1_2:
 
         self.epacking_path = None
         self.setup_ui()
+        
+        # 啟動後自動檢查更新
+        threading.Thread(target=self.check_for_updates, daemon=True).start()
+
+    def check_for_updates(self):
+        """檢查 GitHub 最新 Release，並忽略 SSL 憑證驗證"""
+        api_url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
+        try:
+            # 建立忽略 SSL 驗證的 context，解決 macOS 常見的證書錯誤
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+
+            # GitHub API 需要 User-Agent 標頭
+            req = urllib.request.Request(api_url, headers={'User-Agent': 'Python-ReturnBot-Checker'})
+            
+            with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
+                data = json.loads(response.read().decode())
+                # 取得 Tag Name 並去除 'v' 字元
+                latest_version = data['tag_name'].replace('v', '').strip()
+                download_url = data['html_url']
+
+                # 比對邏輯：若最新版本較新則提示
+                if latest_version > self.current_version:
+                    self.root.after(0, lambda: self.show_update_dialog(latest_version, download_url))
+        except Exception as e:
+            # 靜默處理錯誤，僅供 debug
+            print(f"Update check failed: {e}")
+
+    def show_update_dialog(self, new_ver, url):
+        """跳出更新視窗"""
+        msg = f"發現新版本 v{new_ver}！\n(目前版本: v{self.current_version})\n\n是否要前往 GitHub 下載更新？"
+        if messagebox.askyesno("更新提醒", msg):
+            webbrowser.open(url)
 
     def setup_ui(self):
         system = platform.system()
@@ -72,7 +113,6 @@ class ReturnBotV1_2:
 
         main_frame = ttk.Frame(self.root, padding=20)
         main_frame.pack(fill="both", expand=True)
-
 
         # 1. 選擇類型
         type_frame = ttk.LabelFrame(main_frame, text="步驟 1: 選擇退料類型", padding=15)
@@ -133,7 +173,6 @@ class ReturnBotV1_2:
         if pd.isna(country_str): return "CN"
         name = str(country_str).strip()
         mapping = {
-            # 亞洲 (Asia)
             "中國大陸": "CN", "CHINA": "CN", "PRC": "CN", "中国": "CN",
             "台灣": "TW", "TAIWAN": "TW", "ROC": "TW",
             "香港": "HK", "HONG KONG": "HK",
@@ -147,12 +186,8 @@ class ReturnBotV1_2:
             "菲律賓": "PH", "PHILIPPINES": "PH",
             "印尼": "ID", "INDONESIA": "ID",
             "印度": "IN", "INDIA": "IN",
-
-            # 北美 (North America)
             "美國": "US", "UNITED STATES": "US", "USA": "US",
             "加拿大": "CA", "CANADA": "CA",
-
-            # 歐洲 (Europe)
             "英國": "GB", "UNITED KINGDOM": "GB", "UK": "GB",
             "德國": "DE", "GERMANY": "DE",
             "法國": "FR", "FRANCE": "FR",
@@ -160,12 +195,8 @@ class ReturnBotV1_2:
             "荷蘭": "NL", "NETHERLANDS": "NL",
             "西班牙": "ES", "SPAIN": "ES",
             "瑞士": "CH", "SWITZERLAND": "CH",
-
-            # 大洋洲 (Oceania)
             "澳洲": "AU", "澳大利亞": "AU", "AUSTRALIA": "AU",
             "紐西蘭": "NZ", "NEW ZEALAND": "NZ",
-            
-            # 其他
             "巴西": "BR", "BRAZIL": "BR",
             "俄羅斯": "RU", "RUSSIA": "RU",
         }
@@ -203,7 +234,6 @@ class ReturnBotV1_2:
             df_dhl.to_csv(save_path, index=False, header=False, encoding='utf-8-sig')
             return True, filename
         except Exception as e:
-            print(f"DHL CSV Error: {e}")
             return False, str(e)
 
     def run_excel_task(self):
@@ -213,7 +243,7 @@ class ReturnBotV1_2:
             template_path = os.path.join(self.base_folder, template_filename)
 
             if not os.path.exists(template_path):
-                error_msg = f"找不到模板檔案：{template_filename}\n路徑：{self.base_folder}\n請確認打包完整。"
+                error_msg = f"找不到模板檔案：{template_filename}\n路徑：{self.base_folder}"
                 self.root.after(0, lambda: self.finish_generation(False, error_msg))
                 return
 
@@ -222,28 +252,22 @@ class ReturnBotV1_2:
             except UnicodeDecodeError:
                 df = pd.read_csv(self.epacking_path, encoding='cp950')
 
-            # 確保欄位皆為字串，避免寫入錯誤
             df = df.fillna('')
             
-            # === 日期與單號 ===
             now = datetime.now()
             today_str = now.strftime("%Y%m%d")
             date_slash = now.strftime("%Y/%m/%d")
             year_dash_month = now.strftime("%Y-%m")
 
-            # === 檔名邏輯 ===
             if return_val == "Mail in":
                 invoice_no = f"800935_{today_str}"
                 output_filename = f"800935 + HAWB#：Mail in KBB({today_str}).xlsx"
-            
             elif return_val == "Mail in Battery":
                 invoice_no = f"SRR#{year_dash_month}T935(電膨)"
                 output_filename = f"{invoice_no}.xlsx"
-            
             elif return_val == "KBB":
                 invoice_no = f"SRR#{year_dash_month}T935(KBB)"
                 output_filename = f"{invoice_no}.xlsx"
-
             elif return_val == "KBB Battery":
                 invoice_no = f"SRR#{year_dash_month}T935(單獨鋰電池)"
                 output_filename = f"{invoice_no}.xlsx"
@@ -252,13 +276,11 @@ class ReturnBotV1_2:
             safe_filename = output_filename.replace("/", "-").replace("\\", "-")
             output_path = os.path.join(downloads_path, safe_filename)
 
-            # === 1. 產生 DHL CSV (僅針對一般 Mail-in 和 KBB) ===
             dhl_generated = False
             if return_val in ["Mail in", "KBB"]:
                 dhl_success, dhl_msg = self.generate_dhl_csv(df, downloads_path, invoice_no)
                 dhl_generated = dhl_success
 
-            # === 2. 啟動 Excel ===
             with xw.App(visible=False) as app:
                 wb = app.books.open(template_path)
                 
@@ -284,23 +306,21 @@ class ReturnBotV1_2:
 
                     data_to_write = []
                     for i, row in df.iterrows():
-                        # Returns 欄位
+                        returns_cell = "KBB"
                         if "KBB" in return_val and "Mail in" not in return_val:
                             raw_returns = row.get('預期退回', 'KBB')
                             returns_cell = str(raw_returns) if raw_returns else 'KBB'
-                        else:
-                            returns_cell = "KBB"
 
                         data_row = [
-                            i + 1,                      # No
-                            str(row.get('零件', '')),    # Part
-                            str(row.get('維修', '')),    # RMA
-                            str(row.get('零件說明', '')),# Desc
+                            i + 1,
+                            str(row.get('零件', '')),
+                            str(row.get('維修', '')),
+                            str(row.get('零件說明', '')),
                             None, None, None,
-                            1,                          # Qty
-                            returns_cell,               # Returns
-                            self.unit_price,            # Unit
-                            self.unit_price,            # Ext
+                            1,
+                            returns_cell,
+                            self.unit_price,
+                            self.unit_price,
                             None
                         ]
                         data_to_write.append(data_row)
@@ -308,24 +328,19 @@ class ReturnBotV1_2:
                     if data_to_write:
                         sht_inv.range(f'A{start_row}').value = data_to_write
 
-                    # Footer
                     footer_total_row = 17 + diff
                     footer_qty_row = 19 + diff
                     sht_inv.range(f'J{footer_total_row}').value = "Total:"
                     sum_end_row = 12 + target_rows
-                    formula_str = f"=SUM(K13:K{sum_end_row})"
-                    sht_inv.range(f'K{footer_total_row}').formula = formula_str
+                    sht_inv.range(f'K{footer_total_row}').formula = f"=SUM(K13:K{sum_end_row})"
                     sht_inv.range(f'K{footer_qty_row}').value = target_rows
-
-                except Exception as e:
-                    print(f"Invoice sheet error: {e}")
+                except: pass
 
                 # --- Sheet 3: ePacking List ---
                 try:
                     sht_pack = wb.sheets['ePacking List']
                     sht_pack.range('B1:AD200').value = None
                     sht_pack.range('A2:A200').value = None
-
                     csv_cols = df.columns.tolist()
                     if csv_cols and "no" in str(csv_cols[0]).lower():
                         final_headers = csv_cols[1:]
@@ -333,70 +348,40 @@ class ReturnBotV1_2:
                     else:
                         final_headers = csv_cols
                         final_data = df.fillna('').values.tolist()
-
                     sht_pack.range('B1').value = final_headers
                     sht_pack.range('B2').value = final_data
+                    sht_pack.range('A2').value = [[i + 1] for i in range(len(df))]
+                except: pass
 
-                    row_numbers = [[i + 1] for i in range(len(df))]
-                    sht_pack.range('A2').value = row_numbers
-
-                except Exception as e:
-                    print(f"Packing sheet error: {e}")
-
-                # --- Sheet: 條碼 (僅針對 KBB Battery) ---
+                # --- Sheet: 條碼 ---
                 if return_val == "KBB Battery":
                     try:
                         sht_barcode = wb.sheets['條碼']
                         row_count = len(df)
                         start_row = 4
-                        
-                        # 邏輯：保留第4列為範本。
-                        # 若資料多於 1 筆，則在第 5 列處插入新列，並從第 4 列複製格式與公式。
                         if row_count > 1:
-                            insert_start = start_row + 1
-                            insert_end = start_row + row_count - 1
-                            target_rows_str = f'{insert_start}:{insert_end}'
-
-                            # 1. 插入空間
-                            sht_barcode.range(target_rows_str).insert('down')
-                            
-                            # 2. 複製第 4 列 (範本)
+                            insert_range = f'{start_row + 1}:{start_row + row_count - 1}'
+                            sht_barcode.range(insert_range).insert('down')
                             sht_barcode.range(f'{start_row}:{start_row}').copy()
-                            
-                            # 3. 貼上 (包含公式與格式)
-                            sht_barcode.range(target_rows_str).paste()
-
-                        # 填入資料 (覆蓋文字欄位，保留條碼公式 C 欄)
-                        # A4: NO
-                        sht_barcode.range(f'A{start_row}').options(transpose=True).value = [i+1 for i in range(row_count)]
+                            sht_barcode.range(insert_range).paste()
                         
-                        # B4: Dispatch ID
+                        sht_barcode.range(f'A{start_row}').options(transpose=True).value = [i+1 for i in range(row_count)]
                         if '維修' in df.columns:
                             sht_barcode.range(f'B{start_row}').options(transpose=True).value = df['維修'].astype(str).tolist()
-
-                        # D4: Return Order
                         if '退回訂單' in df.columns:
                             sht_barcode.range(f'D{start_row}').options(transpose=True).value = df['退回訂單'].astype(str).tolist()
-
-                        # E4: Part
                         if '零件' in df.columns:
                             sht_barcode.range(f'E{start_row}').options(transpose=True).value = df['零件'].astype(str).tolist()
-                            
-                        # F4: Part Description
                         if '零件說明' in df.columns:
                             sht_barcode.range(f'F{start_row}').options(transpose=True).value = df['零件說明'].astype(str).tolist()
-                            
-                    except Exception as e:
-                        print(f"Barcode sheet error: {e}")
+                    except: pass
 
                 wb.save(output_path)
                 wb.close()
 
-            # 組合成功訊息
             final_msg = output_path
             if dhl_generated:
                 final_msg += "\n(+ DHL CSV)"
-
             self.root.after(0, lambda: self.finish_generation(True, final_msg))
 
         except Exception as e:
@@ -406,17 +391,13 @@ class ReturnBotV1_2:
         self.progress.stop()
         self.progress.pack_forget()
         self.gen_btn.config(state="normal")
-
         if success:
-            # 取得主檔名顯示即可
             lines = result_msg.split('\n')
             filename = os.path.basename(lines[0])
             msg_text = f"檔案已生成：\n{filename}"
             if len(lines) > 1:
                 msg_text += "\n(已產生 DHL 上傳檔)"
-            
             self.status_label.config(text="✅ 生成成功！", foreground="#008000")
-            
             if messagebox.askyesno("成功", f"{msg_text}\n\n是否立即打開 Excel？"):
                 self.open_file(lines[0])
         else:
@@ -431,8 +412,7 @@ class ReturnBotV1_2:
                 os.startfile(file_path)
             else:
                 subprocess.run(["xdg-open", file_path], check=True)
-        except:
-            pass
+        except: pass
 
 if __name__ == "__main__":
     root = tk.Tk()
