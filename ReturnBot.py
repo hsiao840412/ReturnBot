@@ -101,22 +101,93 @@ class ReturnBotV3:
     def setup_ui(self):
         system = platform.system()
         font_main = "PingFang TC" if system == "Darwin" else "Microsoft JhengHei"
-        
-        style = ttk.Style()
-        style.configure("Title.TLabel", font=(font_main, 14, "bold"))
-        style.configure("Big.TRadiobutton", font=(font_main, 12))
-        style.configure("TButton", font=(font_main, 12))
-        style.configure("Green.Horizontal.TProgressbar", foreground='#28CD41', background='#28CD41')
-        style.configure("Green.TLabel", font=(font_main, 10), foreground="#008000")
-        style.configure("Hint.TLabel", font=(font_main, 10), foreground="#888888") 
-        style.configure("TLabelframe.Label", font=(font_main, 12, "bold"), foreground="white")
 
-        main_frame = ttk.Frame(self.root, padding=20)
+        # Tahoe-inspired palette: content stays quiet while controls float above it.
+        colors = {
+            "window": "#111318",
+            "surface": "#1B1E24",
+            "glass": "#242832",
+            "glass_hover": "#2C313C",
+            "border": "#3A404C",
+            "text": "#F5F7FA",
+            "secondary": "#A9B0BC",
+            "muted": "#747C89",
+            "accent": "#0A84FF",
+            "success": "#32D74B",
+        }
+
+        self.root.configure(background=colors["window"])
+        self.root.geometry("560x700")
+
+        style = ttk.Style()
+        style.configure("Glass.TRadiobutton", font=(font_main, 12), background=colors["glass"], foreground=colors["text"])
+        style.map("Glass.TRadiobutton", background=[("active", colors["glass"]), ("selected", colors["glass"])])
+        style.configure("Accent.TButton", font=(font_main, 13, "bold"), padding=(18, 12))
+        style.configure("Glass.TButton", font=(font_main, 11, "bold"), padding=(14, 8))
+        style.configure(
+            "Blue.Horizontal.TProgressbar",
+            troughcolor=colors["surface"],
+            background=colors["accent"],
+            bordercolor=colors["surface"],
+            lightcolor=colors["accent"],
+            darkcolor=colors["accent"],
+        )
+
+        main_frame = tk.Frame(self.root, bg=colors["window"], padx=28, pady=24)
         main_frame.pack(fill="both", expand=True)
 
+        # Header
+        header = tk.Frame(main_frame, bg=colors["window"])
+        header.pack(fill="x", pady=(0, 22))
+        logo = tk.Label(
+            header, text="↩", width=2, height=1,
+            font=(font_main, 20, "bold"), bg=colors["accent"], fg="white"
+        )
+        logo.pack(side="left", padx=(0, 13))
+        title_group = tk.Frame(header, bg=colors["window"])
+        title_group.pack(side="left", fill="x", expand=True)
+        tk.Label(
+            title_group, text="退料機器人", font=(font_main, 20, "bold"),
+            bg=colors["window"], fg=colors["text"], anchor="w"
+        ).pack(fill="x")
+        tk.Label(
+            title_group, text="ReturnBot · 自動化產生退料文件",
+            font=(font_main, 10), bg=colors["window"], fg=colors["secondary"], anchor="w"
+        ).pack(fill="x", pady=(2, 0))
+        tk.Label(
+            header, text=f"v{self.current_version}", font=(font_main, 10, "bold"),
+            bg=colors["glass"], fg=colors["secondary"], padx=10, pady=5,
+            highlightthickness=1, highlightbackground=colors["border"]
+        ).pack(side="right")
+
+        def make_glass_card(parent):
+            outer = tk.Frame(parent, bg=colors["border"], padx=1, pady=1)
+            inner = tk.Frame(outer, bg=colors["glass"], padx=18, pady=16)
+            inner.pack(fill="both", expand=True)
+            return outer, inner
+
+        def section_header(parent, step, title, subtitle):
+            row = tk.Frame(parent, bg=colors["glass"])
+            row.pack(fill="x", pady=(0, 12))
+            tk.Label(
+                row, text=step, font=(font_main, 9, "bold"), bg=colors["accent"],
+                fg="white", padx=8, pady=3
+            ).pack(side="left", padx=(0, 10))
+            text_group = tk.Frame(row, bg=colors["glass"])
+            text_group.pack(side="left", fill="x", expand=True)
+            tk.Label(
+                text_group, text=title, font=(font_main, 13, "bold"),
+                bg=colors["glass"], fg=colors["text"], anchor="w"
+            ).pack(fill="x")
+            tk.Label(
+                text_group, text=subtitle, font=(font_main, 9),
+                bg=colors["glass"], fg=colors["muted"], anchor="w"
+            ).pack(fill="x", pady=(2, 0))
+
         # 1. 選擇類型
-        type_frame = ttk.LabelFrame(main_frame, text="步驟 1: 選擇退料類型", padding=15)
-        type_frame.pack(fill="x", pady=(0, 20))
+        type_outer, type_frame = make_glass_card(main_frame)
+        type_outer.pack(fill="x", pady=(0, 14))
+        section_header(type_frame, "01", "選擇退料類型", "請依本次作業內容選擇")
 
         self.return_type = tk.StringVar(value="Mail in")
         options = [
@@ -127,29 +198,56 @@ class ReturnBotV3:
         ]
 
         for text, val in options:
-            ttk.Radiobutton(type_frame, text=text, value=val, variable=self.return_type, style="Big.TRadiobutton").pack(anchor="w", pady=5)
+            ttk.Radiobutton(
+                type_frame, text=text, value=val, variable=self.return_type,
+                style="Glass.TRadiobutton"
+            ).pack(anchor="w", pady=4)
 
         # 2. 匯入檔案
-        file_frame = ttk.LabelFrame(main_frame, text="步驟 2: 匯入 ePacking List", padding=15)
-        file_frame.pack(fill="x", pady=(0, 20))
-        self.file_label = ttk.Label(file_frame, text="尚未選擇檔案...", foreground="#AAAAAA", font=(font_main, 10))
+        file_outer, file_frame = make_glass_card(main_frame)
+        file_outer.pack(fill="x", pady=(0, 18))
+        section_header(file_frame, "02", "匯入 ePacking List", "支援 UTF-8 與 Big5 / CP950 CSV")
+        file_row = tk.Frame(file_frame, bg=colors["surface"], padx=12, pady=10)
+        file_row.pack(fill="x")
+        tk.Label(
+            file_row, text="▤", font=(font_main, 15), bg=colors["surface"], fg=colors["accent"]
+        ).pack(side="left", padx=(0, 9))
+        self.file_label = tk.Label(
+            file_row, text="尚未選擇 CSV", bg=colors["surface"], fg=colors["muted"],
+            font=(font_main, 10), anchor="w"
+        )
         self.file_label.pack(side="left", fill="x", expand=True)
-        ttk.Button(file_frame, text="選擇 CSV", command=self.select_file).pack(side="right")
+        ttk.Button(file_row, text="選擇檔案", command=self.select_file, style="Glass.TButton").pack(side="right")
 
         # 3. 生成按鈕
-        self.gen_btn = ttk.Button(main_frame, text="✨ 啟動 Excel 生成", command=self.start_generation, state="disabled")
-        self.gen_btn.pack(fill="x", ipady=15)
+        self.gen_btn = ttk.Button(
+            main_frame, text="生成 Excel 退料文件  →",
+            command=self.start_generation, state="disabled", style="Accent.TButton"
+        )
+        self.gen_btn.pack(fill="x")
 
-        # 4. 進度條
-        self.progress = ttk.Progressbar(main_frame, mode='indeterminate', length=400, style="Green.Horizontal.TProgressbar")
+        # Status is a quiet content layer; progress appears only while working.
+        status_frame = tk.Frame(main_frame, bg=colors["window"])
+        status_frame.pack(fill="x", pady=(18, 0))
+        self.status_dot = tk.Label(
+            status_frame, text="●", font=(font_main, 9), bg=colors["window"], fg=colors["muted"]
+        )
+        self.status_dot.pack(side="left", padx=(4, 8))
+        self.status_label = tk.Label(
+            status_frame, text="就緒 · 需安裝 Microsoft Excel", anchor="w",
+            bg=colors["window"], fg=colors["secondary"], font=(font_main, 10)
+        )
+        self.status_label.pack(side="left", fill="x", expand=True)
+        self.path_hint = tk.Label(
+            status_frame, text="儲存至下載項目", anchor="e",
+            bg=colors["window"], fg=colors["muted"], font=(font_main, 9)
+        )
+        self.path_hint.pack(side="right")
 
-        # 5. 狀態標籤
-        self.status_label = ttk.Label(main_frame, text="需安裝 Microsoft Excel", anchor="center", style="Green.TLabel")
-        self.status_label.pack(pady=(20, 5))
-
-        # 6. 新增：儲存路徑提示
-        self.path_hint = ttk.Label(main_frame, text="💡 提示：檔案會自動保存在「下載項目」中", anchor="center", style="Hint.TLabel")
-        self.path_hint.pack(pady=(0, 10))
+        self.progress = ttk.Progressbar(
+            main_frame, mode='indeterminate', length=400,
+            style="Blue.Horizontal.TProgressbar"
+        )
 
     def select_file(self):
         path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
@@ -166,6 +264,7 @@ class ReturnBotV3:
         self.gen_btn.config(state="disabled")
         self.progress.pack(pady=(20, 5))
         self.progress.start(10)
+        self.status_dot.config(fg="#0A84FF")
         self.status_label.config(text="正在讀取 CSV...", foreground="#008000")
         return_val = self.return_type.get()
         epacking_path = self.epacking_path
@@ -381,7 +480,14 @@ class ReturnBotV3:
                     diff = target_rows - default_rows
                     
                     if diff > 0:
-                        sht_inv.range(f'{start_row + default_rows}:{start_row + default_rows + diff - 1}').insert('down')
+                        # Excel for Mac may reject a single AppleScript request that inserts
+                        # dozens of complete rows. Small batches are slower but reliable.
+                        insert_at = start_row + default_rows
+                        remaining = diff
+                        while remaining > 0:
+                            batch_size = min(20, remaining)
+                            sht_inv.range(f'{insert_at}:{insert_at + batch_size - 1}').insert('down')
+                            remaining -= batch_size
                         sht_inv.range(f'{start_row}:{start_row}').copy()
                         sht_inv.range(f'{start_row + 1}:{start_row + target_rows - 1}').paste(paste='formats')
                     elif diff < 0:
@@ -481,11 +587,13 @@ class ReturnBotV3:
         if success:
             lines = result_msg.split('\n')
             msg_text = f"檔案已生成：\n{os.path.basename(lines[0])}" + ("\n(已產生 DHL 上傳檔)" if len(lines) > 1 else "")
+            self.status_dot.config(fg="#32D74B")
             self.status_label.config(text="✅ 生成成功！", foreground="#008000")
             if warnings:
                 messagebox.showwarning("國家資料提醒", "\n\n".join(warnings))
             if messagebox.askyesno("成功", f"{msg_text}\n\n是否立即打開 Excel？"): self.open_file(lines[0])
         else:
+            self.status_dot.config(fg="#FF453A")
             self.status_label.config(text="❌ 發生錯誤", foreground="#FF3B30")
             messagebox.showerror("錯誤", f"發生錯誤：\n{result_msg}")
 

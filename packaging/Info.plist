@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>zh_TW</string>
+    <key>CFBundleDisplayName</key>
+    <string>退料機器人</string>
+    <key>CFBundleExecutable</key>
+    <string>ReturnBot</string>
+    <key>CFBundleIconFile</key>
+    <string>MyIcon.icns</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.returnbot.app</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>ReturnBot</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>3.0</string>
+    <key>CFBundleVersion</key>
+    <string>3.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>26.0</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>ReturnBot 需要控制 Microsoft Excel 以產生退料文件。</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>ReturnBot 需要將產生的 Excel 與 DHL CSV 儲存到下載項目。</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+</dict>
+</plist>
