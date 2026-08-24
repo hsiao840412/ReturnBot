@@ -20,10 +20,10 @@ except ImportError:
     xw = None
     print("請安裝 xlwings: pip install xlwings")
 
-class ReturnBotV1_2:
+class ReturnBotV3:
     def __init__(self, root):
         # === 版本與 GitHub 設定 ===
-        self.current_version = "2.5"
+        self.current_version = "3.0"
         self.github_repo = "hsiao840412/ReturnBot"
         
         self.root = root
@@ -498,5 +498,5 @@ class ReturnBotV1_2:
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = ReturnBotV1_2(root)
+    app = ReturnBotV3(root)
     root.mainloop()
