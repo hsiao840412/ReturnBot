@@ -5,11 +5,11 @@ import os
 import platform
 import subprocess
 import threading
+import queue
 import sys
 import json
 import urllib.request
 import webbrowser
-import ssl
 from datetime import datetime
 from pathlib import Path
 
@@ -17,7 +17,8 @@ from pathlib import Path
 try:
     import xlwings as xw
 except ImportError:
-    print("請安裝 xlwings: pip3 install xlwings")
+    xw = None
+    print("請安裝 xlwings: pip install xlwings")
 
 class ReturnBotV1_2:
     def __init__(self, root):
@@ -63,6 +64,7 @@ class ReturnBotV1_2:
                 pass
 
         self.epacking_path = None
+        self.task_queue = queue.Queue()
         self.setup_ui()
         
         # 啟動後自動檢查更新
@@ -72,19 +74,24 @@ class ReturnBotV1_2:
         """檢查 GitHub 最新 Release"""
         api_url = f"https://api.github.com/repos/{self.github_repo}/releases/latest"
         try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
             req = urllib.request.Request(api_url, headers={'User-Agent': 'Python-ReturnBot-Checker'})
             
-            with urllib.request.urlopen(req, timeout=5, context=ctx) as response:
+            with urllib.request.urlopen(req, timeout=5) as response:
                 data = json.loads(response.read().decode())
-                latest_version = data['tag_name'].replace('v', '').strip()
+                latest_version = data['tag_name'].removeprefix('v').strip()
                 download_url = data['html_url']
-                if latest_version > self.current_version:
+                if self.version_tuple(latest_version) > self.version_tuple(self.current_version):
                     self.root.after(0, lambda: self.show_update_dialog(latest_version, download_url))
         except Exception as e:
             print(f"Update check failed: {e}")
+
+    @staticmethod
+    def version_tuple(version):
+        """將 2.10.1 轉成可正確比較的數字 tuple。"""
+        try:
+            return tuple(int(part) for part in version.split('.'))
+        except (TypeError, ValueError):
+            raise ValueError(f"無法辨識版本號：{version}")
 
     def show_update_dialog(self, new_ver, url):
         msg = f"發現新版本 v{new_ver}！\n(目前版本: v{self.current_version})\n\n是否要前往 GitHub 下載更新？"
@@ -153,15 +160,68 @@ class ReturnBotV1_2:
 
     def start_generation(self):
         if not self.epacking_path: return
+        if xw is None:
+            messagebox.showerror("錯誤", "缺少 xlwings，請先安裝後再試。")
+            return
         self.gen_btn.config(state="disabled")
         self.progress.pack(pady=(20, 5))
         self.progress.start(10)
-        self.status_label.config(text="正在呼叫 Excel 編輯中，請稍候...", foreground="#008000")
-        threading.Thread(target=self.run_excel_task).start()
+        self.status_label.config(text="正在讀取 CSV...", foreground="#008000")
+        return_val = self.return_type.get()
+        epacking_path = self.epacking_path
+        self.clear_task_queue()
+        threading.Thread(
+            target=self.run_excel_task,
+            args=(return_val, epacking_path),
+            daemon=True
+        ).start()
+        self.root.after(100, self.poll_task_queue)
+
+    def clear_task_queue(self):
+        """清除上一次任務可能殘留的訊息。"""
+        while True:
+            try:
+                self.task_queue.get_nowait()
+            except queue.Empty:
+                break
+
+    def report_status(self, message):
+        """由背景執行緒安全地回報處理進度。"""
+        self.task_queue.put(("status", message))
+
+    def report_result(self, success, message, warnings=None):
+        """由背景執行緒安全地回報最終結果。"""
+        self.task_queue.put(("result", success, message, warnings or []))
+
+    def poll_task_queue(self):
+        """只在 Tk 主執行緒中更新介面。"""
+        finished = False
+        try:
+            while True:
+                item = self.task_queue.get_nowait()
+                if item[0] == "status":
+                    self.status_label.config(text=item[1], foreground="#008000")
+                elif item[0] == "result":
+                    finished = True
+                    self.finish_generation(item[1], item[2], item[3])
+        except queue.Empty:
+            pass
+
+        if not finished:
+            self.root.after(100, self.poll_task_queue)
 
     def get_country_code(self, country_str):
-        if pd.isna(country_str): return "CN"
-        name = str(country_str).strip()
+        return self.resolve_country_code(country_str)[0]
+
+    def resolve_country_code(self, country_str):
+        """返回 (DHL 國家代碼, 未辨識的原始國家)。"""
+        if pd.isna(country_str):
+            return "CN", "(空白)"
+
+        original_name = str(country_str).strip()
+        if not original_name:
+            return "CN", "(空白)"
+        name = original_name.upper()
         mapping = {
             "中國大陸": "CN", "CHINA": "CN", "PRC": "CN", "中国": "CN",
             "台灣": "TW", "TAIWAN": "TW", "ROC": "TW",
@@ -191,49 +251,98 @@ class ReturnBotV1_2:
             "俄羅斯": "RU", "RUSSIA": "RU",
         }
         for key, val in mapping.items():
-            if key in name: return val
-        return "CN"
+            if key.upper() in name:
+                return val, None
+        return "CN", original_name
 
     def get_weight(self, row):
         text_to_check = str(row.get('產品名稱', '')) + str(row.get('零件說明', ''))
-        return "0.5" if "iPad" in text_to_check.upper() else "0.2"
+        return "0.5" if "IPAD" in text_to_check.upper() else "0.2"
+
+    def validate_dataframe(self, df, return_val):
+        """驗證 CSV 是否具備該退料類型所需的資料。"""
+        if df.empty:
+            raise ValueError("CSV 沒有任何可處理的資料。")
+
+        required_columns = {'零件', '零件說明'}
+        if return_val in {'KBB', 'KBB Battery'}:
+            required_columns.add('退回訂單')
+        else:
+            required_columns.add('維修')
+        if return_val in {'Mail in', 'KBB'}:
+            required_columns.add('來源國家/地區')
+
+        missing = sorted(required_columns - set(df.columns))
+        if missing:
+            raise ValueError(f"CSV 缺少必要欄位：{'、'.join(missing)}")
+
+        key_column = '退回訂單' if return_val in {'KBB', 'KBB Battery'} else '維修'
+        empty_columns = [
+            column for column in ('零件', '零件說明', key_column)
+            if df[column].astype(str).str.strip().eq('').any()
+        ]
+        if empty_columns:
+            raise ValueError(f"CSV 的必要欄位含有空白值：{'、'.join(empty_columns)}")
 
     def generate_dhl_csv(self, df, folder, invoice_no):
         try:
             dhl_data = []
+            unknown_countries = set()
             for i, row in df.iterrows():
+                country_code, unknown_country = self.resolve_country_code(row.get('來源國家/地區', ''))
+                if unknown_country:
+                    unknown_countries.add(unknown_country)
                 dhl_row = {
                     'A': 1, 'B': 'INV_ITEM',
                     'C': str(row.get('零件說明', '')),
                     'D': '', 'E': 1, 'F': 'PCS', 'G': 50, 'H': 'USD',
                     'I': self.get_weight(row),
-                    'J': '',
-                    'K': self.get_country_code(row.get('來源國家/地區', ''))
+                    'J': f"未辨識國家：{unknown_country}" if unknown_country else '',
+                    'K': country_code
                 }
                 dhl_data.append(dhl_row)
             df_dhl = pd.DataFrame(dhl_data)[['A','B','C','D','E','F','G','H','I','J','K']]
             safe_inv = invoice_no.replace("/", "-").replace("#", "").replace(" ", "_")
-            filename = f"DHL_Upload_{safe_inv}.csv"
-            df_dhl.to_csv(os.path.join(folder, filename), index=False, header=False, encoding='utf-8-sig')
-            return True, filename
+            requested_path = os.path.join(folder, f"DHL_Upload_{safe_inv}.csv")
+            output_path = self.get_unique_path(requested_path)
+            df_dhl.to_csv(output_path, index=False, header=False, encoding='utf-8-sig')
+            return True, os.path.basename(output_path), sorted(unknown_countries)
         except Exception as e:
-            return False, str(e)
+            return False, str(e), []
 
-    def run_excel_task(self):
+    @staticmethod
+    def get_unique_path(path):
+        """若檔案已存在，自動加上 (2)、(3) 以避免覆蓋。"""
+        if not os.path.exists(path):
+            return path
+
+        folder, filename = os.path.split(path)
+        stem, suffix = os.path.splitext(filename)
+        number = 2
+        while True:
+            candidate = os.path.join(folder, f"{stem} ({number}){suffix}")
+            if not os.path.exists(candidate):
+                return candidate
+            number += 1
+
+    def run_excel_task(self, return_val, epacking_path):
         try:
-            return_val = self.return_type.get()
+            self.report_status("正在讀取 CSV...")
             template_filename = self.template_map.get(return_val)
+            if not template_filename:
+                raise ValueError(f"不支援的退料類型：{return_val}")
             template_path = os.path.join(self.base_folder, template_filename)
 
             if not os.path.exists(template_path):
-                self.root.after(0, lambda: self.finish_generation(False, f"找不到模板：{template_filename}"))
-                return
+                raise FileNotFoundError(f"找不到模板：{template_filename}")
 
             try:
-                df = pd.read_csv(self.epacking_path)
+                df = pd.read_csv(epacking_path)
             except UnicodeDecodeError:
-                df = pd.read_csv(self.epacking_path, encoding='cp950')
+                df = pd.read_csv(epacking_path, encoding='cp950')
             df = df.fillna('')
+            self.report_status("正在驗證資料...")
+            self.validate_dataframe(df, return_val)
             
             now = datetime.now()
             today_str, date_slash, year_dash_month = now.strftime("%Y%m%d"), now.strftime("%Y/%m/%d"), now.strftime("%Y-%m")
@@ -251,18 +360,17 @@ class ReturnBotV1_2:
                 output_filename = f"{invoice_no}.xlsx"
             
             downloads_path = str(Path.home() / "Downloads")
-            output_path = os.path.join(downloads_path, output_filename.replace("/", "-").replace("\\", "-"))
+            requested_path = os.path.join(downloads_path, output_filename.replace("/", "-").replace("\\", "-"))
+            output_path = self.get_unique_path(requested_path)
 
-            dhl_generated = False
-            if return_val in ["Mail in", "KBB"]:
-                dhl_success, _ = self.generate_dhl_csv(df, downloads_path, invoice_no)
-                dhl_generated = dhl_success
-
+            self.report_status("正在啟動 Excel...")
             with xw.App(visible=False) as app:
-                wb = app.books.open(template_path)
-                
-                # --- Sheet 1: KBB&KGB invoice ---
+                wb = None
                 try:
+                    wb = app.books.open(template_path)
+
+                    # --- Sheet 1: KBB&KGB invoice ---
+                    self.report_status("正在填寫發票資料...")
                     sht_inv = wb.sheets['KBB&KGB invoice']
                     sht_inv.range('K1').value = invoice_no
                     sht_inv.range('K2').value = date_slash
@@ -307,43 +415,66 @@ class ReturnBotV1_2:
                     sht_inv.range(f'J{footer_total_row}').value = "Total:"
                     sht_inv.range(f'K{footer_total_row}').formula = f"=SUM(K13:K{12 + target_rows})"
                     sht_inv.range(f'K{footer_qty_row}').value = target_rows
-                except: pass
-
-                # --- Sheet 3: ePacking List ---
-                try:
-                    sht_pack = wb.sheets['ePacking List']
-                    sht_pack.range('A2:AD200').value = None
-                    csv_cols = df.columns.tolist()
-                    final_headers = csv_cols[1:] if csv_cols and "no" in str(csv_cols[0]).lower() else csv_cols
-                    final_data = df.iloc[:, 1:].fillna('').values.tolist() if csv_cols and "no" in str(csv_cols[0]).lower() else df.fillna('').values.tolist()
-                    sht_pack.range('B1').value = final_headers
-                    sht_pack.range('B2').value = final_data
-                    sht_pack.range('A2').value = [[i + 1] for i in range(len(df))]
-                except: pass
-
-                # --- Sheet: 條碼 ---
-                if return_val == "KBB Battery":
+                    # --- Sheet 3: ePacking List ---
+                    self.report_status("正在填寫 ePacking List...")
                     try:
-                        sht_barcode = wb.sheets['條碼']
-                        row_count = len(df)
-                        if row_count > 1:
-                            sht_barcode.range(f'5:{5 + row_count - 2}').insert('down')
-                            sht_barcode.range('4:4').copy()
-                            sht_barcode.range(f'5:{5 + row_count - 2}').paste()
-                        sht_barcode.range('A4').options(transpose=True).value = [i+1 for i in range(row_count)]
-                        if '維修' in df.columns: sht_barcode.range('B4').options(transpose=True).value = df['維修'].astype(str).tolist()
-                        if '退回訂單' in df.columns: sht_barcode.range('D4').options(transpose=True).value = df['退回訂單'].astype(str).tolist()
-                        if '零件' in df.columns: sht_barcode.range('E4').options(transpose=True).value = df['零件'].astype(str).tolist()
-                        if '零件說明' in df.columns: sht_barcode.range('F4').options(transpose=True).value = df['零件說明'].astype(str).tolist()
-                    except: pass
+                        sht_pack = wb.sheets['ePacking List']
+                        sht_pack.range('A2:AD200').value = None
+                        csv_cols = df.columns.tolist()
+                        final_headers = csv_cols[1:] if csv_cols and "no" in str(csv_cols[0]).lower() else csv_cols
+                        final_data = df.iloc[:, 1:].fillna('').values.tolist() if csv_cols and "no" in str(csv_cols[0]).lower() else df.fillna('').values.tolist()
+                        sht_pack.range('B1').value = final_headers
+                        sht_pack.range('B2').value = final_data
+                        sht_pack.range('A2').value = [[i + 1] for i in range(len(df))]
+                    except Exception as e:
+                        raise RuntimeError(f"寫入「ePacking List」工作表失敗：{e}") from e
 
-                wb.save(output_path)
-                wb.close()
-            self.root.after(0, lambda: self.finish_generation(True, f"{output_path}\n(+ DHL CSV)" if dhl_generated else output_path))
+                    # --- Sheet: 條碼 ---
+                    if return_val == "KBB Battery":
+                        self.report_status("正在填寫條碼資料...")
+                        try:
+                            sht_barcode = wb.sheets['條碼']
+                            row_count = len(df)
+                            if row_count > 1:
+                                sht_barcode.range(f'5:{5 + row_count - 2}').insert('down')
+                                sht_barcode.range('4:4').copy()
+                                sht_barcode.range(f'5:{5 + row_count - 2}').paste()
+                            sht_barcode.range('A4').options(transpose=True).value = [i+1 for i in range(row_count)]
+                            if '維修' in df.columns: sht_barcode.range('B4').options(transpose=True).value = df['維修'].astype(str).tolist()
+                            if '退回訂單' in df.columns: sht_barcode.range('D4').options(transpose=True).value = df['退回訂單'].astype(str).tolist()
+                            if '零件' in df.columns: sht_barcode.range('E4').options(transpose=True).value = df['零件'].astype(str).tolist()
+                            if '零件說明' in df.columns: sht_barcode.range('F4').options(transpose=True).value = df['零件說明'].astype(str).tolist()
+                        except Exception as e:
+                            raise RuntimeError(f"寫入「條碼」工作表失敗：{e}") from e
+
+                    self.report_status("正在儲存 Excel...")
+                    wb.save(output_path)
+                finally:
+                    if wb is not None:
+                        wb.close()
+
+            dhl_generated = False
+            warnings = []
+            if return_val in ["Mail in", "KBB"]:
+                self.report_status("正在生成 DHL CSV...")
+                dhl_success, dhl_result, unknown_countries = self.generate_dhl_csv(df, downloads_path, invoice_no)
+                if not dhl_success:
+                    raise RuntimeError(f"Excel 已儲存，但 DHL CSV 生成失敗：{dhl_result}")
+                dhl_generated = True
+                if unknown_countries:
+                    countries = "、".join(unknown_countries)
+                    warnings.append(
+                        f"無法辨識以下國家：{countries}\n"
+                        "DHL CSV 已照常輸出，國家代碼暫用 CN，"
+                        "原始國家已寫入 J 欄備註。"
+                    )
+
+            result = f"{output_path}\n(+ DHL CSV)" if dhl_generated else output_path
+            self.report_result(True, result, warnings)
         except Exception as e:
-            self.root.after(0, lambda: self.finish_generation(False, str(e)))
+            self.report_result(False, str(e))
 
-    def finish_generation(self, success, result_msg):
+    def finish_generation(self, success, result_msg, warnings=None):
         self.progress.stop()
         self.progress.pack_forget()
         self.gen_btn.config(state="normal")
@@ -351,6 +482,8 @@ class ReturnBotV1_2:
             lines = result_msg.split('\n')
             msg_text = f"檔案已生成：\n{os.path.basename(lines[0])}" + ("\n(已產生 DHL 上傳檔)" if len(lines) > 1 else "")
             self.status_label.config(text="✅ 生成成功！", foreground="#008000")
+            if warnings:
+                messagebox.showwarning("國家資料提醒", "\n\n".join(warnings))
             if messagebox.askyesno("成功", f"{msg_text}\n\n是否立即打開 Excel？"): self.open_file(lines[0])
         else:
             self.status_label.config(text="❌ 發生錯誤", foreground="#FF3B30")

@@ -2,3 +2,15 @@ battery kbb template.xlsx
 kbb template.xlsx
 mail-in swollen template.xlsx
 mail-in template.xlsx
+
+# macOS
+.DS_Store
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# PyInstaller
+build/
+dist/
