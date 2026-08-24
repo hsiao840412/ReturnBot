@@ -1,25 +1,65 @@
-# 🤖 ReturnBot - 退料機器人 v3.0
+# ReturnBot v3.0
 
-一個基於 Python 的桌面應用程式，用於自動化生成和填寫 Apple 維修退料流程所需的 Excel (KBB/Mail-in) 文件，大幅提高處理效率。
+ReturnBot 是一款專為 Apple 維修退料流程設計的 macOS 工具。匯入 ePacking List CSV 後，即可自動產生 KBB／Mail-in Excel 文件；特定類型也會同步建立 DHL 上傳用 CSV。
 
-## ✨ 核心功能
+![macOS](https://img.shields.io/badge/macOS-26%20Tahoe-111111?logo=apple)
+![Version](https://img.shields.io/badge/version-3.0-0A84FF)
+![Architecture](https://img.shields.io/badge/architecture-Apple%20Silicon-555555)
 
-* **多類型支援：** 支援四種主要的退料類型：
-    * Mail-in KBB
-    * Mail-in 電池膨脹
-    * 一般 KBB
-    * 單獨鋰電池 KBB
-* **一鍵生成：** 匯入 ePacking List CSV 檔案後，一鍵生成包含所有必要數據的 Excel 模板檔案。
-* **自動化數據處理：**
-    * **發票單號自動命名：** 根據退料類型自動產生日期和類型化的發票編號 (e.g., `800935_YYYYMMDD`, `SRR#YYYY-MMT935(KBB)` )。
-    * **Excel 模板填充：** 自動將 CSV 數據寫入 Excel 模板中的「KBB&KGB invoice」與「ePacking List」工作表。
-    * **動態調整：** 根據 CSV 數據筆數，自動在 Excel 發票工作表中插入/刪除列，確保格式正確。
-* **DHL 上傳檔生成：** 針對 Mail-in KBB 和一般 KBB 類型，自動生成 DHL 貨物上傳所需的 CSV 檔案，包含國家代碼和預估重量。
-* **條碼支援：** 針對「單獨鋰電池 KBB」，自動將數據填入「條碼」工作表，並複製公式以產生所需條碼。
+## 功能
 
-##  安裝與使用 
+- 支援四種退料類型：
+  - Mail-in KBB
+  - Mail-in 電池膨脹
+  - 一般 KBB
+  - 單獨鋰電池 KBB
+- 原生 SwiftUI 介面，採用 macOS Tahoe Liquid Glass 風格。
+- 匯入 ePacking List CSV 後，一鍵產生完整 Excel 退料文件。
+- 自動建立發票編號、填入工作表並依資料筆數調整列數。
+- Mail-in KBB 與一般 KBB 可同步產生 DHL 貨物上傳 CSV。
+- 單獨鋰電池 KBB 支援條碼工作表與公式填入。
+- 自動辨識 CSV 編碼與檢查必要欄位、空白資料及退料類型。
+- 遇到未辨識國家時仍會輸出，並在檔案內加入原始國家名稱備註。
+- 啟動時預先要求 Excel 與「下載項目」存取權，減少產生途中被權限視窗中斷。
 
-1.  前往 [Releases](https://github.com/hsiao840412/ReturnBot/releases) 頁面下載最新版本的 `ReturnBot.dmg`。
-2.  開啟後將 App 拖入「應用程式」資料夾。
-3.  打開終端機複製 “xattr -cr `"App拉進去"` 然後 Return。
-4.  視需求安裝條碼字體
+## 系統需求
+
+- Apple Silicon Mac（arm64）
+- macOS 26 Tahoe 或更新版本
+- Microsoft Excel
+
+## 安裝
+
+1. 前往 [ReturnBot v3.0 Release](https://github.com/hsiao840412/ReturnBot/releases/tag/v3.0) 下載 `ReturnBot-v3.0-arm64.dmg`。
+2. 開啟 DMG，將 ReturnBot 拖入「應用程式」。
+3. 第一次啟動若 macOS 阻擋 App，請在 Finder 對 ReturnBot 按右鍵選擇「打開」，或至「系統設定 → 隱私權與安全性」允許開啟。
+4. 依畫面提示授予 ReturnBot／Microsoft Excel 自動化及「下載項目」存取權。
+5. 若使用單獨鋰電池條碼功能，請先安裝作業所需的條碼字體。
+
+> 此版本採用 ad-hoc 簽署，未經 Apple Developer ID 公證，因此首次開啟可能出現安全提示。
+
+## 使用方式
+
+1. 選擇退料類型。
+2. 選擇 ePacking List CSV。
+3. 按下「生成 Excel 退料文件」。
+4. 產生的檔案會儲存在「下載項目」資料夾。
+
+## 從原始碼建置
+
+此專案的 macOS 介面使用 SwiftUI，資料處理與 Excel 自動化則由 Python helper 執行。建置腳本會將兩者及必要資源封裝為 App 與 DMG。
+
+```bash
+./scripts/package_macos.sh
+```
+
+建置結果位於：
+
+- `build/macos/ReturnBot.app`
+- `build/macos/ReturnBot-v3.0-arm64.dmg`
+
+Excel 範本包含作業格式與資料，因此不存放於公開 GitHub 倉庫；自行建置前需在專案根目錄準備對應範本。
+
+## 隱私
+
+ReturnBot 在本機讀取 CSV、操作 Microsoft Excel 並將結果存入「下載項目」。退料資料不會由 App 上傳至 GitHub。
