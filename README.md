@@ -8,11 +8,11 @@
 
 ## 安裝
 
-1. 前往 [3.2 Release](https://github.com/hsiao840412/ReturnBot/releases/tag/v3.2) 下載 `ReturnBot-3.2-arm64.dmg`。
+1. 前往 [Release](https://github.com/hsiao840412/ReturnBot/releases) 下載最新版本。
 2. 開啟 DMG，將 `ReturnBot.app` 拖入「應用程式」，已有同名 App 時選擇取代。
 3. 第一次啟動若 macOS 阻擋 App，請依「系統設定 → 隱私權與安全性」提示允許開啟。
 4. 若 macOS 詢問輸出資料夾存取權，允許 ReturnBot 儲存文件即可，不需 Excel 自動化授權。
-5. 鋰電池條碼列印仍需安裝原作業使用的條碼字體。
+5. 鋰電池條碼字體需自行[下載](https://github.com/hsiao840412/ReturnBot/blob/211935b42f5c28fb04a129273f0f20067efe6c1e/ConnectCode39.ttf)安裝。
 
 ## 一般退料
 
