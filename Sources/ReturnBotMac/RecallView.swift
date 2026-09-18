@@ -119,6 +119,11 @@ final class RecallModel: ObservableObject {
     @Published var image: NSImage?
     @Published var outputPath: String?
 
+    var hasUnexportedWork: Bool {
+        !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+        (outputPath == nil && (!rows.isEmpty || !caseNumber.isEmpty))
+    }
+
     private var libraryURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ReturnBot/recall-prices.json")

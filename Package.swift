@@ -7,10 +7,15 @@ let package = Package(
     products: [
         .executable(name: "ReturnBotMac", targets: ["ReturnBotMac"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")
+    ],
     targets: [
         .executableTarget(
             name: "ReturnBotMac",
-            path: "Sources/ReturnBotMac"
+            dependencies: [.product(name: "Sparkle", package: "Sparkle")],
+            path: "Sources/ReturnBotMac",
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "ReturnBotMacTests", dependencies: ["ReturnBotMac"])
     ]

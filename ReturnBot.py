@@ -19,7 +19,7 @@ from normal_invoice import write_normal
 class ReturnBotV3:
     def __init__(self, root):
         # === 版本與 GitHub 設定 ===
-        self.current_version = "3.2"
+        self.current_version = "3.2.2"
         self.github_repo = "hsiao840412/ReturnBot"
         
         self.root = root
