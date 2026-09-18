@@ -11,7 +11,7 @@ fi
 output_root="${project_root}/build/macos-${release_version}"
 helper_work="${output_root}/helper-work"
 helper_dist="${output_root}/helper-dist"
-app_path="${output_root}/RetuenBot.app"
+app_path="${output_root}/ReturnBot.app"
 dmg_stage="${output_root}/dmg-stage"
 dmg_path="${output_root}/ReturnBot-${release_version}-arm64.dmg"
 asset_catalog="${output_root}/AppIcon.xcassets"
@@ -90,7 +90,7 @@ codesign --force --sign - \
 codesign --verify --deep --strict --verbose=2 "${app_path}"
 
 mkdir -p "${dmg_stage}"
-cp -R "${app_path}" "${dmg_stage}/RetuenBot.app"
+cp -R "${app_path}" "${dmg_stage}/ReturnBot.app"
 ln -s /Applications "${dmg_stage}/Applications"
 hdiutil create \
     -volname "退料機器人 ${release_version}" \

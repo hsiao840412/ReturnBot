@@ -21,7 +21,7 @@ shutil.copy2(".build/debug/ReturnBotMac", app / "Contents/MacOS/ReturnBot")
 shutil.copytree("build/recall-helper-dist/ReturnBotHelper", app / "Contents/Resources/ReturnBotHelper")
 shutil.copy2("MyIcon.icns", app / "Contents/Resources/MyIcon.icns")
 info = plistlib.loads(Path("packaging/Info.plist").read_bytes())
-info.update(CFBundleIdentifier="com.returnbot.recall-preview.v32", CFBundleDisplayName="RetuenBot", CFBundleName="RetuenBot", CFBundleShortVersionString="3.2", CFBundleVersion="3.2", RecallPreview=False)
+info.update(CFBundleIdentifier="com.returnbot.recall-preview.v32", CFBundleDisplayName="ReturnBot", CFBundleName="ReturnBot", CFBundleShortVersionString="3.2", CFBundleVersion="3.2", RecallPreview=False)
 # Preview has a separate identity, so never offer production updates.
 info.pop("SUPublicEDKey", None)
 info.pop("SUFeedURL", None)

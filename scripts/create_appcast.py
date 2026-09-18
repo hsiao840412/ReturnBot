@@ -10,8 +10,9 @@ import xml.etree.ElementTree as ET
 root = pathlib.Path(__file__).resolve().parent.parent
 version = sys.argv[1]
 folder = root / 'build' / f'macos-{version}'
-archive = folder / f'ReturnBot-{version}-arm64.zip'
-info = plistlib.loads((folder / 'RetuenBot.app/Contents/Info.plist').read_bytes())
+archive = folder / (sys.argv[2] if len(sys.argv) > 2 else f'ReturnBot-{version}-arm64.zip')
+assert archive.parent == folder and archive.suffix == '.zip'
+info = plistlib.loads((folder / 'ReturnBot.app/Contents/Info.plist').read_bytes())
 assert info['CFBundleVersion'] == version
 signer = root / '.build/artifacts/sparkle/Sparkle/bin/sign_update'
 command = [str(signer), '--account', 'com.returnbot.app']
@@ -21,9 +22,9 @@ ns = 'http://www.andymatuschak.org/xml-namespaces/sparkle'
 ET.register_namespace('sparkle', ns)
 rss = ET.Element('rss', version='2.0')
 channel = ET.SubElement(rss, 'channel')
-ET.SubElement(channel, 'title').text = 'RetuenBot 更新'
+ET.SubElement(channel, 'title').text = 'ReturnBot 更新'
 item = ET.SubElement(channel, 'item')
-ET.SubElement(item, 'title').text = f'RetuenBot {version}'
+ET.SubElement(item, 'title').text = f'ReturnBot {version}'
 ET.SubElement(item, 'pubDate').text = email.utils.formatdate(usegmt=True)
 ET.SubElement(item, f'{{{ns}}}version').text = version
 ET.SubElement(item, f'{{{ns}}}shortVersionString').text = version
