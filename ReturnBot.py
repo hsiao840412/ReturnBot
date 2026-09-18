@@ -12,18 +12,14 @@ import urllib.request
 import webbrowser
 from datetime import datetime
 from pathlib import Path
+from invoice_common import InvoiceLayout, invoice_detail
 
-# 引用 xlwings
-try:
-    import xlwings as xw
-except ImportError:
-    xw = None
-    print("請安裝 xlwings: pip install xlwings")
+from normal_invoice import write_normal
 
 class ReturnBotV3:
     def __init__(self, root):
         # === 版本與 GitHub 設定 ===
-        self.current_version = "3.0"
+        self.current_version = "3.2"
         self.github_repo = "hsiao840412/ReturnBot"
         
         self.root = root
@@ -258,9 +254,6 @@ class ReturnBotV3:
 
     def start_generation(self):
         if not self.epacking_path: return
-        if xw is None:
-            messagebox.showerror("錯誤", "缺少 xlwings，請先安裝後再試。")
-            return
         self.gen_btn.config(state="disabled")
         self.progress.pack(pady=(20, 5))
         self.progress.start(10)
@@ -436,9 +429,9 @@ class ReturnBotV3:
                 raise FileNotFoundError(f"找不到模板：{template_filename}")
 
             try:
-                df = pd.read_csv(epacking_path)
+                df = pd.read_csv(epacking_path, dtype=str)
             except UnicodeDecodeError:
-                df = pd.read_csv(epacking_path, encoding='cp950')
+                df = pd.read_csv(epacking_path, encoding='cp950', dtype=str)
             df = df.fillna('')
             self.report_status("正在驗證資料...")
             self.validate_dataframe(df, return_val)
@@ -458,106 +451,14 @@ class ReturnBotV3:
                 invoice_no = f"SRR#{year_dash_month}T935(單獨鋰電池)"
                 output_filename = f"{invoice_no}.xlsx"
             
-            downloads_path = str(Path.home() / "Downloads")
+            downloads_path = str(getattr(self, "output_directory", None) or (Path.home() / "Downloads"))
             requested_path = os.path.join(downloads_path, output_filename.replace("/", "-").replace("\\", "-"))
             output_path = self.get_unique_path(requested_path)
 
-            self.report_status("正在啟動 Excel...")
-            with xw.App(visible=False) as app:
-                wb = None
-                try:
-                    wb = app.books.open(template_path)
-
-                    # --- Sheet 1: KBB&KGB invoice ---
-                    self.report_status("正在填寫發票資料...")
-                    sht_inv = wb.sheets['KBB&KGB invoice']
-                    sht_inv.range('K1').value = invoice_no
-                    sht_inv.range('K2').value = date_slash
-
-                    start_row = 13
-                    default_rows = 3  
-                    target_rows = len(df)
-                    diff = target_rows - default_rows
-                    
-                    if diff > 0:
-                        # Excel for Mac may reject a single AppleScript request that inserts
-                        # dozens of complete rows. Small batches are slower but reliable.
-                        insert_at = start_row + default_rows
-                        remaining = diff
-                        while remaining > 0:
-                            batch_size = min(20, remaining)
-                            sht_inv.range(f'{insert_at}:{insert_at + batch_size - 1}').insert('down')
-                            remaining -= batch_size
-                        sht_inv.range(f'{start_row}:{start_row}').copy()
-                        sht_inv.range(f'{start_row + 1}:{start_row + target_rows - 1}').paste(paste='formats')
-                    elif diff < 0:
-                        sht_inv.range(f'{start_row + target_rows}:{start_row + default_rows - 1}').delete()
-
-                    data_to_write = []
-                    for i, row in df.iterrows():
-                        returns_cell = str(row.get('預期退回', 'KBB')) if "KBB" in return_val and "Mail in" not in return_val else "KBB"
-                        
-                        # [修正重點]：只要是 KBB 相關模式（一般 KBB 或鋰電池 KBB），RMA# 皆抓「退回訂單」
-                        if return_val in ["KBB", "KBB Battery"]:
-                            rma_value = str(row.get('退回訂單', ''))
-                        else:
-                            rma_value = str(row.get('維修', ''))
-                        
-                        data_to_write.append([
-                            i + 1, 
-                            str(row.get('零件', '')), 
-                            rma_value, 
-                            str(row.get('零件說明', '')), 
-                            None, None, None, 1, 
-                            returns_cell, 
-                            self.unit_price, 
-                            self.unit_price, 
-                            None
-                        ])
-                    
-                    if data_to_write: sht_inv.range(f'A{start_row}').value = data_to_write
-
-                    footer_total_row, footer_qty_row = 16 + diff, 18 + diff
-                    sht_inv.range(f'J{footer_total_row}').value = "Total:"
-                    sht_inv.range(f'K{footer_total_row}').formula = f"=SUM(K13:K{12 + target_rows})"
-                    sht_inv.range(f'K{footer_qty_row}').value = target_rows
-                    # --- Sheet 3: ePacking List ---
-                    self.report_status("正在填寫 ePacking List...")
-                    try:
-                        sht_pack = wb.sheets['ePacking List']
-                        sht_pack.range('A2:AD200').value = None
-                        csv_cols = df.columns.tolist()
-                        final_headers = csv_cols[1:] if csv_cols and "no" in str(csv_cols[0]).lower() else csv_cols
-                        final_data = df.iloc[:, 1:].fillna('').values.tolist() if csv_cols and "no" in str(csv_cols[0]).lower() else df.fillna('').values.tolist()
-                        sht_pack.range('B1').value = final_headers
-                        sht_pack.range('B2').value = final_data
-                        sht_pack.range('A2').value = [[i + 1] for i in range(len(df))]
-                    except Exception as e:
-                        raise RuntimeError(f"寫入「ePacking List」工作表失敗：{e}") from e
-
-                    # --- Sheet: 條碼 ---
-                    if return_val == "KBB Battery":
-                        self.report_status("正在填寫條碼資料...")
-                        try:
-                            sht_barcode = wb.sheets['條碼']
-                            row_count = len(df)
-                            if row_count > 1:
-                                sht_barcode.range(f'5:{5 + row_count - 2}').insert('down')
-                                sht_barcode.range('4:4').copy()
-                                sht_barcode.range(f'5:{5 + row_count - 2}').paste()
-                            sht_barcode.range('A4').options(transpose=True).value = [i+1 for i in range(row_count)]
-                            if '維修' in df.columns: sht_barcode.range('B4').options(transpose=True).value = df['維修'].astype(str).tolist()
-                            if '退回訂單' in df.columns: sht_barcode.range('D4').options(transpose=True).value = df['退回訂單'].astype(str).tolist()
-                            if '零件' in df.columns: sht_barcode.range('E4').options(transpose=True).value = df['零件'].astype(str).tolist()
-                            if '零件說明' in df.columns: sht_barcode.range('F4').options(transpose=True).value = df['零件說明'].astype(str).tolist()
-                        except Exception as e:
-                            raise RuntimeError(f"寫入「條碼」工作表失敗：{e}") from e
-
-                    self.report_status("正在儲存 Excel...")
-                    wb.save(output_path)
-                finally:
-                    if wb is not None:
-                        wb.close()
+            self.report_status("正在製作 Invoice、ePacking List 與標籤...")
+            Path(downloads_path).mkdir(parents=True, exist_ok=True)
+            write_normal(template_path, output_path, df, return_val, invoice_no,
+                         date_slash, self.unit_price)
 
             dhl_generated = False
             warnings = []

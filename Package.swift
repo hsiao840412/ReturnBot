@@ -11,6 +11,7 @@ let package = Package(
         .executableTarget(
             name: "ReturnBotMac",
             path: "Sources/ReturnBotMac"
-        )
+        ),
+        .testTarget(name: "ReturnBotMacTests", dependencies: ["ReturnBotMac"])
     ]
 )

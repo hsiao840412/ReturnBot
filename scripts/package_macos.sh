@@ -3,12 +3,12 @@ set -euo pipefail
 
 script_dir="${0:A:h}"
 project_root="${script_dir:h}"
-output_root="${project_root}/build/macos"
+output_root="${project_root}/build/macos-3.2"
 helper_work="${output_root}/helper-work"
 helper_dist="${output_root}/helper-dist"
-app_path="${output_root}/ReturnBot.app"
+app_path="${output_root}/RetuenBot.app"
 dmg_stage="${output_root}/dmg-stage"
-dmg_path="${output_root}/ReturnBot-v3.0-arm64.dmg"
+dmg_path="${output_root}/ReturnBot-3.2-arm64.dmg"
 asset_catalog="${output_root}/AppIcon.xcassets"
 asset_output="${output_root}/icon-output"
 icon_partial_plist="${output_root}/AppIconPartial.plist"
@@ -16,6 +16,7 @@ swift_cache="/tmp/returnbot-swift-cache"
 clang_cache="/tmp/returnbot-clang-cache"
 
 cd "${project_root}"
+export PYINSTALLER_CONFIG_DIR="${output_root}/pyinstaller-cache"
 
 if [[ ! -x "${project_root}/.venv/bin/pyinstaller" ]]; then
     print -u2 "Missing .venv/bin/pyinstaller"
@@ -46,7 +47,7 @@ xcrun actool \
     --output-partial-info-plist "${icon_partial_plist}" \
     "${asset_catalog}"
 
-"${project_root}/.venv/bin/pyinstaller" \
+"${project_root}/.venv/bin/python" -m PyInstaller \
     --noconfirm \
     --clean \
     --workpath "${helper_work}" \
@@ -56,7 +57,7 @@ xcrun actool \
 env \
     SWIFTPM_MODULECACHE_OVERRIDE="${swift_cache}" \
     CLANG_MODULE_CACHE_PATH="${clang_cache}" \
-    swift build -c release
+    swift build -c release --disable-sandbox
 
 mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Resources"
 cp "${project_root}/.build/release/ReturnBotMac" "${app_path}/Contents/MacOS/ReturnBot"
@@ -74,10 +75,10 @@ codesign --force --sign - \
 codesign --verify --deep --strict --verbose=2 "${app_path}"
 
 mkdir -p "${dmg_stage}"
-cp -R "${app_path}" "${dmg_stage}/ReturnBot.app"
+cp -R "${app_path}" "${dmg_stage}/RetuenBot.app"
 ln -s /Applications "${dmg_stage}/Applications"
 hdiutil create \
-    -volname "ReturnBot 3.0" \
+    -volname "退料機器人 3.2" \
     -srcfolder "${dmg_stage}" \
     -ov \
     -format UDZO \

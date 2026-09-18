@@ -7,9 +7,6 @@ import os
 import queue
 import sys
 import threading
-import uuid
-
-from ReturnBot import ReturnBotV3, xw
 
 
 RETURN_TYPES = {
@@ -25,6 +22,7 @@ def emit(payload):
 
 
 def build_worker():
+    from ReturnBot import ReturnBotV3
     worker = object.__new__(ReturnBotV3)
     worker.unit_price = 50.0
     worker.base_folder = os.path.dirname(os.path.abspath(__file__))
@@ -38,74 +36,24 @@ def build_worker():
     return worker
 
 
-def preflight_excel_access():
-    """Open each bundled template once so Excel requests file access up front."""
-    if xw is None:
-        emit({"type": "result", "operation": "preflight", "success": False,
-              "message": "缺少 xlwings，無法準備 Excel。", "warnings": []})
-        return 1
-
-    worker = build_worker()
-    emit({"type": "progress", "operation": "preflight", "message": "正在啟動 Excel..."})
-    try:
-        with xw.App(visible=False) as app:
-            for template_name in dict.fromkeys(worker.template_map.values()):
-                template_path = os.path.join(worker.base_folder, template_name)
-                if not os.path.isfile(template_path):
-                    raise FileNotFoundError(f"找不到模板：{template_name}")
-                emit({
-                    "type": "progress",
-                    "operation": "preflight",
-                    "message": f"正在確認模板存取權：{template_name}",
-                })
-                book = None
-                try:
-                    book = app.books.open(template_path, read_only=True, update_links=False)
-                finally:
-                    if book is not None:
-                        book.close()
-
-            emit({
-                "type": "progress",
-                "operation": "preflight",
-                "message": "正在確認「下載項目」儲存權限...",
-            })
-            downloads_path = os.path.join(os.path.expanduser("~"), "Downloads")
-            probe_path = os.path.join(
-                downloads_path,
-                f".ReturnBot_Access_Check_{uuid.uuid4().hex}.xlsx",
-            )
-            probe_book = None
-            try:
-                probe_book = app.books.add()
-                probe_book.save(probe_path)
-            finally:
-                if probe_book is not None:
-                    probe_book.close()
-                if os.path.exists(probe_path):
-                    os.remove(probe_path)
-        emit({
-            "type": "result", "operation": "preflight", "success": True,
-            "message": "Excel 已就緒", "warnings": [],
-        })
-        return 0
-    except Exception as error:
-        emit({
-            "type": "result", "operation": "preflight", "success": False,
-            "message": f"Excel 權限預檢失敗：{error}", "warnings": [],
-        })
-        return 1
-
-
 def main():
     parser = argparse.ArgumentParser(description="Generate ReturnBot Excel files")
-    parser.add_argument("--preflight", action="store_true")
     parser.add_argument("--type", choices=RETURN_TYPES)
     parser.add_argument("--csv")
+    parser.add_argument("--output-directory", help="Optional output folder; defaults to Downloads")
+    parser.add_argument("--recall", choices=['prices', 'preview', 'export'])
     args = parser.parse_args()
 
-    if args.preflight:
-        return preflight_excel_access()
+    if args.recall:
+        from recall import handle
+        try:
+            result = handle(args.recall, json.load(sys.stdin))
+            emit({'success': True, 'data': result})
+            return 0
+        except Exception as error:
+            emit({'success': False, 'message': str(error)})
+            return 1
+
     if not args.type or not args.csv:
         parser.error("--type 與 --csv 為生成模式的必要參數")
 
@@ -115,6 +63,8 @@ def main():
         return 2
 
     worker = build_worker()
+    if args.output_directory:
+        worker.output_directory = os.path.abspath(args.output_directory)
     task = threading.Thread(
         target=worker.run_excel_task,
         args=(RETURN_TYPES[args.type], csv_path),

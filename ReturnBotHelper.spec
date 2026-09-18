@@ -7,6 +7,7 @@ templates = [
     "mail-in template.xlsx",
     "mail-in swollen template.xlsx",
     "kbb template.xlsx",
+    "kgb template.xlsx",
     "battery kbb template.xlsx",
 ]
 
