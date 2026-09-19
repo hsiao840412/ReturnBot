@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="${0:A:h}"
 project_root="${script_dir:h}"
-release_version="${1:-3.2.2}"
+release_version="${1:-3.2.3}"
 if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     print -u2 "Invalid version"
     exit 1

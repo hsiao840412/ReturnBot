@@ -31,17 +31,13 @@ final class PerformanceTests: XCTestCase {
         NSGraphicsContext.restoreGraphicsState()
         let data = bitmap.representation(using: .png, properties: [:])!
         let service = RecallOCR()
-        let fast = try await service.recognize(data, precise: false)
-        let cached = try await service.recognize(data, precise: false)
-        let accurate = try await service.recognize(data, precise: true)
+        let fast = try await service.recognize(data)
+        let cached = try await service.recognize(data)
         XCTAssertFalse(fast.cached)
         XCTAssertTrue(cached.cached)
         XCTAssertEqual(cached.text, fast.text)
-        XCTAssertFalse(accurate.cached)
         for row in 0..<28 {
             XCTAssertTrue(fast.text.contains("TA661-\(42901 + row)"), fast.text)
-            XCTAssertTrue(accurate.text.contains("TA661-\(42901 + row)"), accurate.text)
         }
-        print("OCR benchmark 2200x1600, 28 rows: fast=\(fast.seconds)s accurate=\(accurate.seconds)s")
     }
 }

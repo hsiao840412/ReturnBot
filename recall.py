@@ -81,6 +81,7 @@ def import_prices(path):
         'part': ['零件編號', '零件', '料號', 'Part Number', 'Part'],
         'price': ['交換價格', '交換價', '交換單價 (TWD)', '原交換單價 (TWD)', '台幣單價', '價格', 'Price'],
         'description': ['零件說明（原文）', '零件說明', '商品描述', 'Description'],
+        'stock': ['庫存價格', '庫存價'],
         'option': ['價格選項'],
         'currency': ['零件貨幣', '幣別', 'Currency'],
     }
@@ -92,6 +93,7 @@ def import_prices(path):
             if columns['part'] is None or columns['price'] is None:
                 continue
             entries = {}
+            stock_prices = {}
             matched = 0
             source_rows = len(rows) - header_index - 1
             if columns['option'] is not None and columns['currency'] is None:
@@ -100,7 +102,8 @@ def import_prices(path):
                 def value(key):
                     col = columns[key]
                     return row[col] if col is not None and col < len(row) else ''
-                if columns['option'] is not None and str(value('option')).strip() != '交換價格':
+                option = str(value('option')).strip() if columns['option'] is not None else '交換價格'
+                if option not in ('交換價格', '庫存價格'):
                     continue
                 if columns['currency'] is not None and str(value('currency')).strip().upper() != 'TWD':
                     continue
@@ -113,6 +116,18 @@ def import_prices(path):
                 price = number(value('price'), f'{sheet} 第 {idx} 列價格', positive=False)
                 if price < 0:
                     raise ValueError(f'{sheet} 第 {idx} 列價格不可小於 0')
+                if option == '庫存價格':
+                    if part in stock_prices and stock_prices[part] != price:
+                        raise ValueError(f'價格表重複料號 {part} 的庫存價格不一致')
+                    stock_prices[part] = price
+                    continue
+                if columns['stock'] is not None and str(value('stock')).strip():
+                    stock = number(value('stock'), f'{sheet} 第 {idx} 列庫存價格', positive=False)
+                    if stock < 0:
+                        raise ValueError(f'{part} 庫存價格不可小於 0')
+                    if part in stock_prices and stock_prices[part] != stock:
+                        raise ValueError(f'價格表重複料號 {part} 的庫存價格不一致')
+                    stock_prices[part] = stock
                 entry = {'part': part, 'twd': str(price), 'description': str(value('description'))}
                 existing = entries.get(part)
                 if existing and (Decimal(existing['twd']) != price or existing['description'] != entry['description']):
@@ -121,6 +136,12 @@ def import_prices(path):
                 matched += 1
             if not entries:
                 raise ValueError('價格表沒有商品資料')
+            for part, entry in entries.items():
+                if Decimal(entry['twd']) == 0:
+                    if part not in stock_prices:
+                        raise ValueError(f'{part} 交換價格為 0，但缺少台幣庫存價格，請補齊後重新匯入')
+                    entry['twd'] = str(stock_prices[part])
+                    entry['usesStockPrice'] = True
             return {'entries': list(entries.values()), 'source': path.name, 'sheet': sheet,
                     'sourceRows': source_rows, 'matchedRows': matched,
                     'mergedRows': matched - len(entries),

@@ -58,13 +58,36 @@ class RecallTests(unittest.TestCase):
                             'Phone 2,TA661-1,"Original, text",TWD,交換價格,100\n'
                             'Phone,TA661-1,"Original, text",TWD,庫存價格 ,300\n'
                             'Phone,TA661-1,"Original, text",USD,交換價格,9\n'
-                            'Phone,TA661-2,zero,TWD,交換價格,0\n', encoding='utf-8')
+                            'Phone,TA661-2,zero,TWD,交換價格,0\n'
+                            'Phone,TA661-2,stock description,TWD,庫存價格,300\n', encoding='utf-8')
             library = import_prices(path)
             self.assertEqual(len(library['entries']), 2)
             self.assertEqual(library['mergedRows'], 1)
-            self.assertEqual(library['zeroPriceCount'], 1)
+            self.assertEqual(library['zeroPriceCount'], 0)
+            fallback = library['entries'][1]
+            self.assertEqual(fallback['twd'], '300')
+            self.assertTrue(fallback['usesStockPrice'])
+            self.assertEqual(fallback['description'], 'zero')
+            result = prepare(payload([{**item(), **fallback}], rate='10'))
+            self.assertEqual(result['total'], 30)
             self.assertEqual(library['entries'][0]['description'], 'Original, text')
             self.assertEqual(library['entries'][0]['twd'], '100.0')
+
+    def test_stock_fallback_wide_missing_and_conflict(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / 'prices.csv'
+            path.write_text('零件編號,交換價格,庫存價格,零件說明\nTA661-1,0,250,original\nTA661-2,100,500,second\n', encoding='utf-8')
+            entries = import_prices(path)['entries']
+            self.assertEqual(entries[0]['twd'], '250')
+            self.assertTrue(entries[0]['usesStockPrice'])
+            self.assertEqual(entries[1]['twd'], '100')
+            self.assertNotIn('usesStockPrice', entries[1])
+            path.write_text('零件編號,交換價格,零件說明\nTA661-1,0,original\n', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, '缺少台幣庫存價格'):
+                import_prices(path)
+            path.write_text('零件編號,交換價格,庫存價格,零件說明\nTA661-1,0,250,original\nTA661-1,0,260,original\n', encoding='utf-8')
+            with self.assertRaisesRegex(ValueError, '庫存價格不一致'):
+                import_prices(path)
 
     def test_zero_requires_per_line_confirmation(self):
         with self.assertRaisesRegex(ValueError, '0 美金'):

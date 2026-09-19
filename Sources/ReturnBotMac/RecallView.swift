@@ -7,6 +7,7 @@ struct RecallPrice: Codable, Sendable {
     var part: String
     var twd: String
     var description: String
+    var usesStockPrice: Bool?
 }
 
 struct RecallLibrary: Codable, Sendable {
@@ -28,6 +29,7 @@ struct RecallLine: Identifiable, Codable, Equatable, Sendable {
     var twd: String
     var weight: String = "0.2"
     var country: String = "CN"
+    var usesStockPrice: Bool?
     var zeroPriceConfirmed = false
 }
 
@@ -106,7 +108,6 @@ final class RecallModel: ObservableObject {
     @Published var library: RecallLibrary?
     @Published var rows: [RecallLine] = []
     @Published var input = ""
-    @Published var preciseOCR = false
     @Published var caseNumber = ""
     @Published var rate = ""
     @Published var weight = "0.2"
@@ -132,6 +133,10 @@ final class RecallModel: ObservableObject {
     init() {
         if let data = try? Data(contentsOf: libraryURL) {
             library = try? JSONDecoder().decode(RecallLibrary.self, from: data)
+            if library?.entries.contains(where: { Double($0.twd) == 0 && $0.usesStockPrice == nil }) == true {
+                library = nil
+                message = "舊價格表含交換價格為 0 的料號，請重新匯入價格表，以取得庫存價格。"
+            }
         }
     }
 
@@ -145,6 +150,7 @@ final class RecallModel: ObservableObject {
         }
         rows[index].part = part
         rows[index].twd = price.twd
+        rows[index].usesStockPrice = price.usesStockPrice
         rows[index].description = price.description
         rows[index].zeroPriceConfirmed = false
         invalidate()
@@ -183,7 +189,7 @@ final class RecallModel: ObservableObject {
             // Only infer quantity from an unambiguous two-field input. OCR rows
             // containing other columns require explicit quantity review.
             let quantity = cells.count == 2 && cells[0].uppercased() == part && Int(cells[1]) != nil ? cells[1] : ""
-            rows.append(RecallLine(part: part, quantity: quantity, description: price?.description ?? "", twd: price?.twd ?? "", weight: weight, country: country))
+            rows.append(RecallLine(part: part, quantity: quantity, description: price?.description ?? "", twd: price?.twd ?? "", weight: weight, country: country, usesStockPrice: price?.usesStockPrice))
             added += 1
         }
         input = unmatched.joined(separator: "\n")
@@ -202,17 +208,17 @@ final class RecallModel: ObservableObject {
     func recognize(_ data: Data) async {
         guard !busy else { return }
         busy = true
-        message = preciseOCR ? "正在精確辨識截圖…" : "正在快速辨識截圖…"
+        message = "正在辨識截圖…"
         defer { busy = false }
         do {
-            let result = try await RecallOCR.shared.recognize(data, precise: preciseOCR)
+            let result = try await RecallOCR.shared.recognize(data)
             let text = result.text
             guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw RecallFailure.message("沒有辨識到文字。可勾選精確辨識，或截取較清晰的料號與數量區域再試。")
+                throw RecallFailure.message("沒有辨識到文字。請截取較清晰的料號與數量區域再試。")
             }
             image = NSImage(data: data)
             input += (input.isEmpty ? "" : "\n") + text
-            message = "已辨識截圖（\(String(format: "%.1f", result.seconds)) 秒\(result.cached ? "，使用快取" : "")）。先核對料號與數量，再按「加入明細」；辨識不準時可勾選精確辨識。"
+            message = "已辨識截圖（\(String(format: "%.1f", result.seconds)) 秒\(result.cached ? "，使用快取" : "")）。先核對料號與數量，再按「加入明細」。"
         } catch { self.error = error.localizedDescription }
     }
 
@@ -256,7 +262,7 @@ struct RecallView: View {
                             Spacer()
                             Button("匯入價格表", systemImage: "folder") { importingPrices = true }
                         }
-                        Text("可直接匯入原始零件價格表；自動篩選 TWD 交換價格並合併相同料號。資料只保存在此 Mac。")
+                        Text("可直接匯入原始零件價格表；自動篩選 TWD 價格，交換價格為 0 時改用庫存價格，並合併相同料號。資料只保存在此 Mac。")
                             .font(.caption).foregroundStyle(.secondary)
                         HStack {
                             VStack(alignment: .leading, spacing: 6) {
@@ -283,7 +289,6 @@ struct RecallView: View {
                         HStack {
                             Button("貼上截圖", systemImage: "doc.on.clipboard") { Task { await model.pasteImage() } }
                             Button("選擇截圖", systemImage: "photo") { importingImage = true }
-                            Toggle("精確辨識（較慢）", isOn: $model.preciseOCR).toggleStyle(.checkbox)
                             Spacer()
                             Button("新增空白列", systemImage: "plus") {
                                 model.rows.append(RecallLine(part: "", quantity: "", description: "", twd: "", weight: model.weight, country: model.country))
@@ -334,6 +339,7 @@ struct RecallView: View {
                                     TextField("料號", text: Binding(get: { row.part }, set: {
                                         row.part = $0
                                         row.twd = ""
+                                        row.usesStockPrice = nil
                                         row.description = ""
                                         row.zeroPriceConfirmed = false
                                     })).frame(width: 160)
@@ -341,6 +347,7 @@ struct RecallView: View {
                                     TextField("數量", text: $row.quantity).frame(width: 55)
                                     TextField("台幣單價", text: Binding(get: { row.twd }, set: {
                                         row.twd = $0
+                                        row.usesStockPrice = nil
                                         row.zeroPriceConfirmed = false
                                     })).frame(width: 90)
                                     TextField("重量", text: $row.weight).frame(width: 60)
@@ -352,6 +359,9 @@ struct RecallView: View {
                                     Button(role: .destructive) { model.rows.removeAll { $0.id == row.id }; model.invalidate() } label: {
                                         Image(systemName: "minus.circle")
                                     }
+                                }
+                                if row.usesStockPrice == true {
+                                    Text("交換價格為0，故使用庫存價格").font(.caption).foregroundStyle(.secondary)
                                 }
                                 TextField("商品描述原文（必填）", text: $row.description, axis: .vertical)
                                 if row.quantity.isEmpty || row.twd.isEmpty || row.description.isEmpty {

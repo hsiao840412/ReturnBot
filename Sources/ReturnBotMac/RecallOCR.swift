@@ -8,15 +8,15 @@ actor RecallOCR {
         let seconds: Double
         let cached: Bool
     }
-    private var previous: (data: Data, precise: Bool, text: String)?
+    private var previous: (data: Data, text: String)?
 
-    func recognize(_ data: Data, precise: Bool) throws -> Result {
+    func recognize(_ data: Data) throws -> Result {
         let start = Date()
-        if let previous, previous.data == data, previous.precise == precise {
+        if let previous, previous.data == data {
             return Result(text: previous.text, seconds: 0, cached: true)
         }
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = precise ? .accurate : .fast
+        request.recognitionLevel = .fast
         request.usesLanguageCorrection = false
         // Keep original pixels: shrinking tall screenshots can erase small part numbers.
         try VNImageRequestHandler(data: data).perform([request])
@@ -26,7 +26,7 @@ actor RecallOCR {
         }
         let text = Self.joinRows(cells)
         // Bound the cache to one screenshot; never cache failed or empty recognition.
-        if !text.isEmpty { previous = (data, precise, text) }
+        if !text.isEmpty { previous = (data, text) }
         return Result(text: text, seconds: Date().timeIntervalSince(start), cached: false)
     }
 
