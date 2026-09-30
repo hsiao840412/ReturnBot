@@ -250,7 +250,7 @@ struct RecallView: View {
             VStack(alignment: .leading, spacing: 18) {
                 WorkflowHeader(title: "寄銷召回", subtitle: "整理零件、核對價格，完成分單與匯出", symbol: "shippingbox", beta: true)
                 HStack(spacing: 18) {
-                    Label("每單上限 USD 5,000", systemImage: "shippingbox")
+                    Label("每單上限 USD 7,500", systemImage: "shippingbox")
                     Label("美金單價四捨五入", systemImage: "dollarsign.circle")
                     Spacer()
                     if model.busy { ProgressView().controlSize(.small) }

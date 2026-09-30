@@ -11,7 +11,7 @@ from invoice_common import InvoiceLayout, invoice_detail
 from recall import export, import_prices, prepare, xlsx_rows
 
 
-def item(part='TA661-12345', quantity='1', twd='159650', description='A, original  description, '):
+def item(part='TA661-12345', quantity='1', twd='239475', description='A, original  description, '):
     return dict(part=part, quantity=quantity, twd=twd, description=description, weight='0.2', country='CN')
 
 
@@ -21,12 +21,18 @@ def payload(rows, rate='31.93'):
 
 class RecallTests(unittest.TestCase):
     def test_limit_quantity_and_round_before_split(self):
-        result = prepare(payload([item(twd='79.84', quantity='2'), item(twd='159458.42')]))
-        self.assertEqual([g['total'] for g in result['groups']], [5000])
+        result = prepare(payload([item(twd='79.84', quantity='2'), item(twd='239283.42')]))
+        self.assertEqual([g['total'] for g in result['groups']], [7500])
         self.assertEqual(result['groups'][0]['rows'][0]['usd'], 3)
         self.assertEqual(result['quantity'], 3)
         result = prepare(payload([item(), item(twd='31.93')]))
-        self.assertEqual([g['total'] for g in result['groups']], [5000, 1])
+        self.assertEqual([g['total'] for g in result['groups']], [7500, 1])
+
+    def test_new_limit_boundary(self):
+        self.assertEqual(prepare(payload([item(twd='50010')], rate='10'))['total'], 5001)
+        self.assertEqual(prepare(payload([item(twd='75000')], rate='10'))['total'], 7500)
+        with self.assertRaisesRegex(ValueError, '超過 7,500'):
+            prepare(payload([item(twd='75010')], rate='10'))
 
     def test_half_up(self):
         self.assertEqual(prepare(payload([item(twd='25')], rate='10'))['total'], 3)

@@ -15,6 +15,8 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+MAX_INVOICE_USD = 7500
+
 NS = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 
 
@@ -178,12 +180,12 @@ def prepare(payload):
         if not re.fullmatch('[A-Z]{2}', country):
             raise ValueError(f'{part} 原產地請填兩碼國別代碼')
         total = usd * quantity
-        if total > 5000:
-            raise ValueError(f'{part} 單筆 USD {total:,} 超過 5,000，請手動拆成多列並分配數量')
+        if total > MAX_INVOICE_USD:
+            raise ValueError(f'{part} 單筆 USD {total:,} 超過 {MAX_INVOICE_USD:,}，請手動拆成多列並分配數量')
         row = {'part': part, 'description': description, 'quantity': int(quantity),
                'twd': str(twd), 'usd': int(usd), 'total': int(total),
                'weight': str(weight), 'country': country}
-        if subtotal + total > 5000:
+        if subtotal + total > MAX_INVOICE_USD:
             groups.append({'rows': current, 'total': int(subtotal)})
             current, subtotal = [], Decimal(0)
         current.append(row)

@@ -29,7 +29,7 @@ ET.SubElement(item, 'pubDate').text = email.utils.formatdate(usegmt=True)
 ET.SubElement(item, f'{{{ns}}}version').text = version
 ET.SubElement(item, f'{{{ns}}}shortVersionString').text = version
 ET.SubElement(item, f'{{{ns}}}minimumSystemVersion').text = info['LSMinimumSystemVersion']
-ET.SubElement(item, 'description').text = '寄銷召回：交換價格為 0 時改用庫存價格，並顯示提示；移除精確辨識選項，保留快速辨識。請重新匯入含庫存價格的價格表。'
+ET.SubElement(item, 'description').text = '寄銷召回每單美金上限由 USD 5,000 調整為 USD 7,500，分單計算與畫面提示同步更新。'
 ET.SubElement(item, 'enclosure', {
     'url': f'https://github.com/hsiao840412/ReturnBot/releases/download/v{version}/{archive.name}',
     'length': str(archive.stat().st_size), 'type': 'application/octet-stream',
