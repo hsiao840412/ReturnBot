@@ -12,11 +12,7 @@ struct ReturnBotMacApp: App {
         .windowResizability(.contentSize)
         .defaultSize(width: 960, height: 850)
         .commands {
-            CommandGroup(after: .appInfo) {
-                Button("檢查更新…") { updates.checkForUpdates() }
-                    .disabled(!updates.canCheckForUpdates)
-                Toggle("自動檢查更新", isOn: Binding(get: { updates.automaticallyChecks }, set: { updates.automaticallyChecks = $0 }))
-            }
+            UpdateCommands(updates: updates)
         }
     }
 }
@@ -55,5 +51,24 @@ struct ReturnBotHome: View {
             }
         }
         .onDisappear { updates.unregister(workspaceID) }
+    }
+}
+
+/// Commands must observe the model themselves; delegate-adaptor access alone
+/// does not subscribe the menu to its published settings/session changes.
+struct UpdateCommands: Commands {
+    @ObservedObject var updates: AppUpdateController
+
+    var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button(updates.lastUpdateError == nil ? "檢查更新…" : "重試檢查更新…") {
+                updates.checkForUpdates()
+            }
+            .disabled(!updates.canCheckForUpdates)
+            Toggle("自動檢查更新", isOn: Binding(
+                get: { updates.automaticallyChecks },
+                set: { updates.setAutomaticallyChecks($0) }
+            ))
+        }
     }
 }

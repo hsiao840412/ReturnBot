@@ -1,7 +1,33 @@
 import XCTest
+import Sparkle
 @testable import ReturnBotMac
 
 final class UpdateStateTests: XCTestCase {
+    @MainActor
+    func testAutomaticPreferenceAndRetrySurviveRestart() {
+        let suite = "ReturnBotTests." + UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let model = AppUpdateController(preferences: defaults)
+        XCTAssertTrue(model.automaticallyChecks)
+        model.setAutomaticallyChecks(false)
+        model.recordUpdateResult(NSError(domain: NSURLErrorDomain, code: NSURLErrorNetworkConnectionLost))
+        let restarted = AppUpdateController(preferences: defaults)
+        XCTAssertFalse(restarted.automaticallyChecks)
+        XCTAssertNotNil(restarted.lastUpdateError)
+        restarted.setAutomaticallyChecks(true)
+        restarted.recordUpdateResult(NSError(domain: SUSparkleErrorDomain,
+            code: Int(SUError.noUpdateError.rawValue)))
+        XCTAssertNil(restarted.lastUpdateError)
+        restarted.recordUpdateResult(NSError(domain: SUSparkleErrorDomain,
+            code: Int(SUError.installationCanceledError.rawValue)))
+        XCTAssertNil(restarted.lastUpdateError)
+        restarted.recordUpdateResult(nil)
+        let recovered = AppUpdateController(preferences: defaults)
+        XCTAssertTrue(recovered.automaticallyChecks)
+        XCTAssertNil(recovered.lastUpdateError)
+    }
+
     @MainActor
     func testAllWindowsProtectWorkAndUnregister() {
         let controller = AppUpdateController()

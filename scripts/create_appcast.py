@@ -29,7 +29,7 @@ ET.SubElement(item, 'pubDate').text = email.utils.formatdate(usegmt=True)
 ET.SubElement(item, f'{{{ns}}}version').text = version
 ET.SubElement(item, f'{{{ns}}}shortVersionString').text = version
 ET.SubElement(item, f'{{{ns}}}minimumSystemVersion').text = info['LSMinimumSystemVersion']
-ET.SubElement(item, 'description').text = '寄銷召回每單美金上限由 USD 5,000 調整為 USD 7,500，分單計算與畫面提示同步更新。'
+ET.SubElement(item, 'description').text = '修正手動檢查更新及自動檢查開關的狀態同步。更新失敗後提供重試入口，並保留自動檢查設定；關閉自動檢查仍可手動更新。'
 ET.SubElement(item, 'enclosure', {
     'url': f'https://github.com/hsiao840412/ReturnBot/releases/download/v{version}/{archive.name}',
     'length': str(archive.stat().st_size), 'type': 'application/octet-stream',

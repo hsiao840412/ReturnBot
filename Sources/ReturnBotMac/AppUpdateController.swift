@@ -16,11 +16,27 @@ struct UpdateWorkState {
 @MainActor
 final class AppUpdateController: NSObject, ObservableObject, NSApplicationDelegate, SPUUpdaterDelegate {
     @Published private(set) var canCheckForUpdates = false
-    @Published var automaticallyChecks = true {
-        didSet { controller?.updater.automaticallyChecksForUpdates = automaticallyChecks }
-    }
+    @Published private(set) var automaticallyChecks = true
+    @Published private(set) var lastUpdateError: String?
+    private let preferences: UserDefaults
     private var controller: SPUStandardUpdaterController?
-    private var observation: NSKeyValueObservation?
+    private var observations: [NSKeyValueObservation] = []
+
+    override convenience init() { self.init(preferences: .standard) }
+
+    init(preferences: UserDefaults) {
+        self.preferences = preferences
+        super.init()
+        automaticallyChecks = preferences.object(forKey: "SUEnableAutomaticChecks") as? Bool ?? true
+        lastUpdateError = preferences.string(forKey: "ReturnBotLastUpdateError")
+    }
+
+    func setAutomaticallyChecks(_ enabled: Bool) {
+        automaticallyChecks = enabled
+        preferences.set(enabled, forKey: "SUEnableAutomaticChecks")
+        controller?.updater.automaticallyChecksForUpdates = enabled
+    }
+
     private var workspaces: [UUID: () -> UpdateWorkState] = [:]
 
     var workState: UpdateWorkState { .combined(workspaces.values.map { $0() }) }
@@ -33,15 +49,42 @@ final class AppUpdateController: NSObject, ObservableObject, NSApplicationDelega
         guard Bundle.main.object(forInfoDictionaryKey: "SUPublicEDKey") != nil else { return }
         let controller = SPUStandardUpdaterController(startingUpdater: false, updaterDelegate: self, userDriverDelegate: nil)
         self.controller = controller
-        observation = controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
-            Task { @MainActor in self?.canCheckForUpdates = updater.canCheckForUpdates }
-        }
+        observations = [
+            controller.updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                Task { @MainActor in self?.canCheckForUpdates = updater.canCheckForUpdates }
+            },
+            controller.updater.observe(\.automaticallyChecksForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                Task { @MainActor in self?.automaticallyChecks = updater.automaticallyChecksForUpdates }
+            }
+        ]
         controller.startUpdater()
         automaticallyChecks = controller.updater.automaticallyChecksForUpdates
+        // Retry on every launch when enabled, including after a failed download.
+        // A user's explicit opt-out always takes precedence over retrying.
         if automaticallyChecks { controller.updater.checkForUpdatesInBackground() }
     }
 
-    func checkForUpdates() { controller?.checkForUpdates(nil) }
+    func checkForUpdates() {
+        guard let updater = controller?.updater, updater.canCheckForUpdates else { return }
+        updater.checkForUpdates()
+    }
+
+    func recordUpdateResult(_ error: Error?) {
+        let nsError = error as NSError?
+        // No update is a successful check; cancellation is not a failure to retry.
+        if let nsError, nsError.domain == SUSparkleErrorDomain,
+           [SUError.noUpdateError.rawValue, SUError.installationCanceledError.rawValue].contains(OSStatus(nsError.code)) {
+            lastUpdateError = nil
+        } else {
+            lastUpdateError = error?.localizedDescription
+        }
+        preferences.set(lastUpdateError, forKey: "ReturnBotLastUpdateError")
+    }
+
+    func updater(_ updater: SPUUpdater, didFinishUpdateCycleFor updateCheck: SPUUpdateCheck, error: Error?) {
+        recordUpdateResult(error)
+        canCheckForUpdates = updater.canCheckForUpdates
+    }
 
     func updater(_ updater: SPUUpdater, mayPerform updateCheck: SPUUpdateCheck) throws {
         if workState.busy {
