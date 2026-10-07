@@ -23,6 +23,26 @@ def cell(root, address, strings):
     return strings[int(v.text)] if c.get('t') == 's' else v.text
 
 class NormalInvoiceTests(unittest.TestCase):
+    def test_kbb_returns_codes_preserve_epacking_values(self):
+        labels = ['已知的壞板', '良好零件退貨（診斷）', '良好零件退貨 (UOB)',
+                  '抵達時失效', 'KBB', '未分類退回', '']
+        codes = ['KBB', 'DIAG', 'GPR', 'DOA', 'KBB', '未分類退回', '']
+        df = sample(len(labels))
+        df['預期退回'] = labels
+        with tempfile.TemporaryDirectory() as directory:
+            for kind, template in TEMPLATES.items():
+                with self.subTest(kind=kind):
+                    path = Path(directory) / 'result.xlsx'
+                    write_normal(template, path, df, kind, 'INVOICE-TEST', '2026/10/07')
+                    with ZipFile(path) as z:
+                        invoice = E.fromstring(z.read('xl/worksheets/sheet1.xml'))
+                        packing = E.fromstring(z.read('xl/worksheets/sheet2.xml'))
+                        strings = [''.join(s.itertext()) for s in E.fromstring(z.read('xl/sharedStrings.xml'))]
+                        expected = codes if kind in ('KBB', 'KBB Battery') else ['KBB'] * len(labels)
+                        self.assertEqual([cell(invoice, f'I{i}', strings) for i in range(13, 13 + len(labels))], expected)
+                        self.assertEqual(cell(packing, 'F1', strings), '預期退回')
+                        self.assertEqual([cell(packing, f'F{i}', strings) for i in range(2, 2 + len(labels))], labels)
+
     def test_all_templates_row_counts_and_assets(self):
         with tempfile.TemporaryDirectory() as directory:
             for kind, template in TEMPLATES.items():

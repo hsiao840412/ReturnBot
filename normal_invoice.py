@@ -11,6 +11,12 @@ from kgb_template import N, tag, put, xml_bytes
 
 REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
 DRAW = {'d': 'http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing'}
+RETURN_CODES = {
+    '已知的壞板': 'KBB',
+    '良好零件退貨（診斷）': 'DIAG',
+    '良好零件退貨 (UOB)': 'GPR',
+    '抵達時失效': 'DOA',
+}
 
 
 def col(number):
@@ -111,6 +117,7 @@ def write_normal(template, output, df, return_type, invoice_no, date, unit_price
         data.append(row)
         rma = str(item.get('退回訂單' if return_type in ('KBB', 'KBB Battery') else '維修', ''))
         returns = str(item.get('預期退回', 'KBB')) if return_type in ('KBB', 'KBB Battery') else 'KBB'
+        returns = RETURN_CODES.get(returns, returns)
         values = invoice_detail(i - 12, str(item.get('零件', '')), rma, description, 1, returns, unit_price, unit_price)
         for column, value in zip('ABCDEFGHIJKL', values): put(invoice, f'{column}{i}', value)
         put(invoice, f'K{i}', unit_price, f'H{i}*J{i}')
