@@ -2,6 +2,15 @@
 
 App 使用 Sparkle 2.10.0。啟動時自動檢查，選單提供「檢查更新…」與自動檢查開關。下載與安裝需要使用者點選；處理中或未匯出的召回案件會阻止直接退出。
 
+## 3.2.6
+
+一般 KBB 與單獨鋰電池 KBB 的 Invoice「Returns」欄位，將 ePacking List 的「預期退回」內容轉成以下代碼；ePacking List 保留原始內容，其他值維持原樣。
+
+- 已知的壞板 → KBB
+- 良好零件退貨（診斷） → DIAG
+- 良好零件退貨 (UOB) → GPR
+- 抵達時失效 → DOA
+
 ## 建置與簽署
 
 1. 使用 Xcode，執行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer zsh scripts/package_macos.sh 版本號`。
