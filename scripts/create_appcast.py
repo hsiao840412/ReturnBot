@@ -29,7 +29,7 @@ ET.SubElement(item, 'pubDate').text = email.utils.formatdate(usegmt=True)
 ET.SubElement(item, f'{{{ns}}}version').text = version
 ET.SubElement(item, f'{{{ns}}}shortVersionString').text = version
 ET.SubElement(item, f'{{{ns}}}minimumSystemVersion').text = info['LSMinimumSystemVersion']
-ET.SubElement(item, 'description').text = '一般 KBB 與單獨鋰電池 KBB 的 Invoice「Returns」欄位，會將「已知的壞板」「良好零件退貨（診斷）」「良好零件退貨 (UOB)」「抵達時失效」分別轉成 KBB、DIAG、GPR、DOA。ePacking List 保留原始內容。'
+ET.SubElement(item, 'description').text = '更新一般退料與寄銷召回介面：左側作業功能列、寬版工作區、固定頁首與狀態列，以及可編輯召回明細資料表；同步調整介面用詞。保留既有文件產出、人工核對與匯出流程。'
 ET.SubElement(item, 'enclosure', {
     'url': f'https://github.com/hsiao840412/ReturnBot/releases/download/v{version}/{archive.name}',
     'length': str(archive.stat().st_size), 'type': 'application/octet-stream',

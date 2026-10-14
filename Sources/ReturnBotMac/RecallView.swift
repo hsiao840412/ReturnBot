@@ -248,177 +248,37 @@ struct RecallView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                WorkflowHeader(title: "寄銷召回", subtitle: "整理零件、核對價格，完成分單與匯出", symbol: "shippingbox", beta: true)
                 HStack(spacing: 18) {
                     Label("每單上限 USD 7,500", systemImage: "shippingbox")
                     Label("美金單價四捨五入", systemImage: "dollarsign.circle")
                     Spacer()
-                    if model.busy { ProgressView().controlSize(.small) }
-                }.font(.caption).foregroundStyle(.secondary)
-                GroupBox("01  價格表與案件") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text(model.library.map { "\($0.source) · \($0.entries.count) 筆 · \($0.importedAt.prefix(10))" } ?? "請匯入自己的價格表（Excel / CSV）")
-                            Spacer()
-                            Button("匯入價格表", systemImage: "folder") { importingPrices = true }
-                        }
-                        Text("可直接匯入原始零件價格表；自動篩選 TWD 價格，交換價格為 0 時改用庫存價格，並合併相同料號。資料只保存在此 Mac。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("召回單號").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                TextField("例如 NAR9521123", text: $model.caseNumber)
-                            }
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text("本次匯率 · TWD / USD").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                                TextField("1 美金等於多少台幣", text: $model.rate)
-                            }
-                        }.textFieldStyle(.roundedBorder)
-                        HStack {
-                            Text("新列預設重量")
-                            TextField("0.2", text: $model.weight).frame(width: 65)
-                            Text("原產地")
-                            TextField("CN", text: $model.country).frame(width: 65)
-                            Text("匯率請輸入本次採用值；重量單位沿用 DHL 貨件設定。")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                    }.padding(8)
                 }
-                GroupBox("02  加入退回零件") {
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack {
-                            Button("貼上截圖", systemImage: "doc.on.clipboard") { Task { await model.pasteImage() } }
-                            Button("選擇截圖", systemImage: "photo") { importingImage = true }
-                            Spacer()
-                            Button("新增空白列", systemImage: "plus") {
-                                model.rows.append(RecallLine(part: "", quantity: "", description: "", twd: "", weight: model.weight, country: model.country))
-                                model.invalidate()
-                            }
-                        }
-                        HStack(alignment: .top) {
-                            if let image = model.image {
-                                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 300, maxHeight: 180)
-                            }
-                            TextEditor(text: $model.input).font(.system(.body, design: .monospaced)).frame(height: 120)
-                                .scrollContentBackground(.hidden)
-                                .padding(8)
-                                .background(AppSurface.input(colorScheme), in: RoundedRectangle(cornerRadius: 12))
-                                .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor)))
-                        }
-                        HStack {
-                            Text("一行一筆，例如 TA661-42901 2。截圖可分次加入；不會自動合併重複料號。")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("加入明細", systemImage: "plus.circle") { model.addInput() }.disabled(model.input.isEmpty || model.library == nil)
-                        }
-                    }.padding(8)
+                .font(.caption).foregroundStyle(.secondary)
+                HStack(alignment: .top, spacing: 18) {
+                    priceCard
+                    inputCard
                 }
-                GroupBox("03  核對明細") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("商品描述原文會同時用於 Invoice 與 DHL。").font(.caption).foregroundStyle(.secondary)
-                        if model.rows.isEmpty {
-                            VStack(spacing: 10) {
-                                Image(systemName: "list.bullet.rectangle").font(.system(size: 28)).foregroundStyle(.blue)
-                                Text("尚未加入零件").font(.headline)
-                                Text("貼上截圖或輸入料號後，價格與描述會自動帶入。")
-                                    .font(.callout).foregroundStyle(.secondary)
-                            }.frame(maxWidth: .infinity).padding(.vertical, 24)
-                        } else {
-                            HStack {
-                                Text("料號 / 查價").frame(width: 215, alignment: .leading)
-                                Text("數量").frame(width: 55)
-                                Text("台幣單價").frame(width: 90)
-                                Text("重量").frame(width: 60)
-                                Text("原產地").frame(width: 55)
-                                Spacer()
-                            }.font(.caption).foregroundStyle(.secondary)
-                        }
-                        ForEach($model.rows) { $row in
-                            VStack(alignment: .leading, spacing: 6) {
-                                HStack {
-                                    TextField("料號", text: Binding(get: { row.part }, set: {
-                                        row.part = $0
-                                        row.twd = ""
-                                        row.usesStockPrice = nil
-                                        row.description = ""
-                                        row.zeroPriceConfirmed = false
-                                    })).frame(width: 160)
-                                    Button("查價") { model.lookup(row.id) }
-                                    TextField("數量", text: $row.quantity).frame(width: 55)
-                                    TextField("台幣單價", text: Binding(get: { row.twd }, set: {
-                                        row.twd = $0
-                                        row.usesStockPrice = nil
-                                        row.zeroPriceConfirmed = false
-                                    })).frame(width: 90)
-                                    TextField("重量", text: $row.weight).frame(width: 60)
-                                    TextField("原產地", text: $row.country).frame(width: 55)
-                                    if model.rows.filter({ $0.part == row.part }).count > 1 {
-                                        Text("重複料號").font(.caption).foregroundStyle(.orange)
-                                    }
-                                    Spacer()
-                                    Button(role: .destructive) { model.rows.removeAll { $0.id == row.id }; model.invalidate() } label: {
-                                        Image(systemName: "minus.circle")
-                                    }
-                                }
-                                if row.usesStockPrice == true {
-                                    Text("交換價格為0，故使用庫存價格").font(.caption).foregroundStyle(.secondary)
-                                }
-                                TextField("商品描述原文（必填）", text: $row.description, axis: .vertical)
-                                if row.quantity.isEmpty || row.twd.isEmpty || row.description.isEmpty {
-                                    Text("待補齊：數量、價格或商品描述").font(.caption).foregroundStyle(.orange)
-                                }
-                                if let price = Double(row.twd), let rate = Double(model.rate), rate > 0, (price / rate).rounded() == 0 {
-                                    Toggle("此筆為 0 美金：確認以 0 美金申報", isOn: $row.zeroPriceConfirmed)
-                                        .font(.caption).foregroundStyle(.orange)
-                                }
-                            }.textFieldStyle(.roundedBorder).padding(.vertical, 5)
-                            Divider()
-                        }
-                    }.padding(8)
+                detailCard
+                Button { Task { await model.calculate() } } label: {
+                    HStack {
+                        Text("預覽分單")
+                        Spacer()
+                        Image(systemName: "arrow.right")
+                    }.frame(maxWidth: .infinity).padding(.vertical, 4)
                 }
-                HStack {
-                    Button { Task { await model.calculate() } } label: {
-                        HStack {
-                            Text("預覽分單")
-                            Spacer()
-                            Image(systemName: "arrow.right")
-                        }.frame(maxWidth: .infinity).padding(.vertical, 4)
-                    }.buttonStyle(.glassProminent).controlSize(.large)
-                        .disabled(model.rows.isEmpty)
-                }
+                .buttonStyle(.glassProminent).controlSize(.large)
+                .disabled(model.rows.isEmpty)
                 if !model.message.isEmpty {
-                    Label(model.message, systemImage: model.busy ? "hourglass" : "info.circle")
-                        .font(.callout).foregroundStyle(.secondary)
+                    Label(model.message, systemImage: model.outputPath != nil ? "checkmark.circle.fill" : "info.circle")
+                        .font(.callout).foregroundStyle(model.outputPath != nil ? Color.green : Color.secondary)
+                        .textSelection(.enabled)
                 }
-                if let result = model.result {
-                    GroupBox("04  分單與匯出") {
-                        VStack(alignment: .leading, spacing: 10) {
-                            ForEach(Array(result.groups.enumerated()), id: \.offset) { index, group in
-                                DisclosureGroup("第 \(index + 1) 單 · \(group.rows.count) 筆 · USD \(group.total.formatted())") {
-                                    ForEach(Array(group.rows.enumerated()), id: \.offset) { _, row in
-                                        Text("\(row.part)  × \(row.quantity)  × USD \(row.usd)  =  \(row.total)").font(.callout.monospacedDigit())
-                                    }
-                                }
-                            }
-                            Text("共 \(result.quantity) 件，USD \(result.total.formatted())。每單套用 KGB 範本，含 Invoice 與外箱標籤；預設每單一箱，毛重與尺寸請裝箱後填寫。")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Toggle("已核對數量、價格、描述、重量與原產地", isOn: $model.reviewed)
-                            HStack {
-                                Button("選擇資料夾並匯出") { chooseOutput() }.buttonStyle(.glassProminent).disabled(!model.reviewed)
-                                if let path = model.outputPath {
-                                    Button("打開結果") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-                                }
-                            }
-                        }.padding(8)
-                    }
-                }
-            }.padding(.horizontal, 30).padding(.top, 24).padding(.bottom, 30)
+                if let result = model.result { resultCard(result) }
+            }
+            .padding(.horizontal, 30).padding(.top, 24).padding(.bottom, 30)
         }
-        .background(WorkflowBackground())
-        .buttonStyle(.glass)
-        .controlSize(.regular)
-        .groupBoxStyle(RecallSectionStyle())
-        .textFieldStyle(.roundedBorder)
+        .buttonStyle(.glass).controlSize(.regular)
+        .groupBoxStyle(WorkflowCardStyle()).textFieldStyle(.roundedBorder)
         .disabled(model.busy)
         .onChange(of: model.caseNumber) { model.invalidate() }
         .onChange(of: model.rate) { model.invalidate() }
@@ -444,6 +304,239 @@ struct RecallView: View {
         } message: { Text(model.error ?? "") }
     }
 
+    private var priceCard: some View {
+        GroupBox("01  價格表與案件") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.library?.source ?? "尚未匯入價格表")
+                            .font(.callout.weight(.medium)).lineLimit(1)
+                            .help(model.library?.source ?? "請匯入 Excel 或 CSV 價格表")
+                        if let library = model.library {
+                            Text("\(library.entries.count) 個料號 · \(library.importedAt.prefix(10))")
+                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        } else {
+                            Text("Excel / CSV · 資料只保存在此 Mac")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer(minLength: 8)
+                    Button("匯入價格表", systemImage: "folder") { importingPrices = true }
+                }
+                Divider()
+                HStack(spacing: 12) {
+                    WorkflowField(title: "召回單號") {
+                        TextField("例如 NAR9521123", text: $model.caseNumber).accessibilityLabel("召回單號")
+                    }
+                    WorkflowField(title: "匯率 · TWD / USD") {
+                        TextField("1 美金等於多少台幣", text: $model.rate).accessibilityLabel("本次匯率")
+                            .monospacedDigit()
+                    }
+                }
+                HStack(spacing: 12) {
+                    WorkflowField(title: "新列預設重量") {
+                        TextField("0.2", text: $model.weight).accessibilityLabel("新列預設重量").monospacedDigit()
+                    }
+                    WorkflowField(title: "新列原產地") {
+                        TextField("CN", text: $model.country).accessibilityLabel("新列原產地")
+                    }
+                }
+                Text("自動篩選 TWD 價格並合併相同料號；交換價格為 0 時改用庫存價格。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("匯率請輸入本次採用值；重量單位沿用 DHL 貨件設定。")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var inputCard: some View {
+        GroupBox("02  加入退回零件") {
+            VStack(alignment: .leading, spacing: 12) {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 12) { imageButtons; Spacer(minLength: 0); addBlankButton }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) { imageButtons }
+                        addBlankButton
+                    }
+                }
+                if let image = model.image {
+                    Image(nsImage: image).resizable().scaledToFit()
+                        .frame(maxWidth: .infinity, maxHeight: 140)
+                        .accessibilityLabel("待核對的零件截圖")
+                }
+                TextEditor(text: $model.input)
+                    .font(.system(.body, design: .monospaced)).frame(height: 120)
+                    .scrollContentBackground(.hidden).padding(8)
+                    .background(AppSurface.input(colorScheme), in: .rect(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor)))
+                    .accessibilityLabel("待加入的料號與數量")
+                Text("一行一筆，例如 TA661-42901 2。截圖可分次加入，不會自動合併重複料號。")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Spacer()
+                    Button("加入明細", systemImage: "plus.circle") { model.addInput() }
+                        .disabled(model.input.isEmpty || model.library == nil)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var imageButtons: some View {
+        Button("貼上截圖", systemImage: "doc.on.clipboard") { Task { await model.pasteImage() } }
+        Button("選擇截圖", systemImage: "photo") { importingImage = true }
+    }
+
+    private var addBlankButton: some View {
+        Button("新增空白列", systemImage: "plus") {
+            model.rows.append(RecallLine(part: "", quantity: "", description: "", twd: "", weight: model.weight, country: model.country))
+            model.invalidate()
+        }
+    }
+
+    private var detailCard: some View {
+        GroupBox("03  核對明細") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Text("商品描述原文會同時用於 Invoice 與 DHL。")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(model.rows.count) 筆").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+                if model.rows.isEmpty {
+                    WorkflowEmptyState(symbol: "list.bullet.rectangle", title: "尚未加入零件",
+                                       detail: "貼上截圖或輸入料號後，核對數量、價格與商品描述。")
+                } else {
+                    detailTable
+                    if incompleteCount > 0 {
+                        Label("\(incompleteCount) 筆待補齊數量、價格或商品描述", systemImage: "exclamationmark.triangle.fill")
+                            .font(.callout).foregroundStyle(.orange)
+                    }
+                    ForEach(model.rows.filter(isZeroDollar)) { row in
+                        Toggle("\(row.part.isEmpty ? "未填料號" : row.part)：確認以 0 美金申報", isOn: line(row).zeroPriceConfirmed)
+                            .font(.callout).foregroundStyle(.orange)
+                    }
+                }
+            }
+        }
+    }
+
+    private var incompleteCount: Int {
+        model.rows.filter { $0.quantity.isEmpty || $0.twd.isEmpty || $0.description.isEmpty }.count
+    }
+
+    private func isZeroDollar(_ row: RecallLine) -> Bool {
+        guard let price = Double(row.twd), let rate = Double(model.rate), rate > 0 else { return false }
+        return (price / rate).rounded() == 0
+    }
+
+    // Bind by stable ID so table reuse and deleting a row don't edit a different line.
+    private func line(_ row: RecallLine) -> Binding<RecallLine> {
+        Binding(
+            get: { model.rows.first { $0.id == row.id } ?? row },
+            set: { updated in
+                if let index = model.rows.firstIndex(where: { $0.id == row.id }) { model.rows[index] = updated }
+            }
+        )
+    }
+
+    private var detailTable: some View {
+        let duplicates = Set(Dictionary(grouping: model.rows, by: \.part).filter { $0.value.count > 1 }.keys)
+        return Table(model.rows) {
+            TableColumn("料號 / 查價") { row in
+                HStack(spacing: 6) {
+                    TextField("料號", text: Binding(get: { line(row).wrappedValue.part }, set: {
+                        var updated = line(row).wrappedValue
+                        updated.part = $0
+                        updated.twd = ""
+                        updated.usesStockPrice = nil
+                        updated.description = ""
+                        updated.zeroPriceConfirmed = false
+                        line(row).wrappedValue = updated
+                    }))
+                    .accessibilityLabel("料號").help(row.part)
+                    Button("查價") { model.lookup(row.id) }.help("查詢此料號的價格與描述")
+                    if duplicates.contains(row.part) {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                            .help("重複料號").accessibilityLabel("重複料號")
+                    }
+                }.frame(minHeight: 42)
+            }.width(min: 180, ideal: 220, max: 280)
+            TableColumn("數量") { row in
+                TextField("數量", text: line(row).quantity).monospacedDigit().accessibilityLabel("數量")
+            }.width(48)
+            TableColumn("台幣單價") { row in
+                VStack(alignment: .leading, spacing: 3) {
+                    TextField("單價", text: Binding(get: { line(row).wrappedValue.twd }, set: {
+                        var updated = line(row).wrappedValue
+                        updated.twd = $0
+                        updated.usesStockPrice = nil
+                        updated.zeroPriceConfirmed = false
+                        line(row).wrappedValue = updated
+                    })).monospacedDigit().accessibilityLabel("台幣單價")
+                    if row.usesStockPrice == true {
+                        Text("庫存價格").font(.caption2).foregroundStyle(.secondary)
+                            .help("交換價格為 0，故使用庫存價格")
+                    }
+                }
+            }.width(80)
+            TableColumn("重量") { row in
+                TextField("重量", text: line(row).weight).monospacedDigit().accessibilityLabel("重量")
+            }.width(56)
+            TableColumn("原產地") { row in
+                TextField("原產地", text: line(row).country).accessibilityLabel("原產地")
+            }.width(52)
+            TableColumn("商品描述原文（必填）") { row in
+                TextField("商品描述原文", text: line(row).description)
+                    .accessibilityLabel("商品描述原文").help(row.description)
+            }.width(min: 150, ideal: 250, max: .infinity)
+            TableColumn("操作") { row in
+                Button(role: .destructive) {
+                    model.rows.removeAll { $0.id == row.id }; model.invalidate()
+                } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.plain).foregroundStyle(.red)
+                .help("移除此筆明細").accessibilityLabel("移除此筆明細")
+            }.width(32)
+        }
+        .tableStyle(.inset)
+        .frame(height: min(360, max(180, CGFloat(model.rows.count) * 56 + 40)))
+        .background(AppSurface.panel(colorScheme), in: .rect(cornerRadius: 12))
+        .clipShape(.rect(cornerRadius: 12))
+    }
+
+    private func resultCard(_ result: RecallResult) -> some View {
+        GroupBox("04  分單與匯出") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Label("\(result.groups.count) 組分單", systemImage: "shippingbox")
+                    Spacer()
+                    Text("\(result.quantity) 件 · USD \(result.total.formatted())")
+                        .fontWeight(.semibold).monospacedDigit()
+                }.textSelection(.enabled)
+                ForEach(Array(result.groups.enumerated()), id: \.offset) { index, group in
+                    DisclosureGroup("第 \(index + 1) 單 · \(group.rows.count) 筆 · USD \(group.total.formatted())") {
+                        ForEach(Array(group.rows.enumerated()), id: \.offset) { _, row in
+                            Text("\(row.part)  × \(row.quantity)  × USD \(row.usd)  =  \(row.total)")
+                                .font(.callout.monospacedDigit()).textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+                Text("每單含 KGB Invoice、外箱標籤與 DHL CSV；預設每單一箱，毛重與尺寸請裝箱後填寫。")
+                    .font(.caption).foregroundStyle(.secondary)
+                Divider()
+                Toggle("已核對數量、價格、描述、重量與原產地", isOn: $model.reviewed)
+                HStack(spacing: 12) {
+                    Spacer()
+                    if let path = model.outputPath {
+                        Button("打開結果", systemImage: "arrow.up.forward.app") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
+                    }
+                    Button("選擇資料夾並匯出", systemImage: "square.and.arrow.up") { chooseOutput() }
+                        .buttonStyle(.glassProminent).disabled(!model.reviewed)
+                }
+            }
+        }
+    }
+
     private func chooseOutput() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -457,19 +550,5 @@ struct RecallView: View {
                 await model.calculate(exportTo: url)
             }
         }
-    }
-}
-
-private struct RecallSectionStyle: GroupBoxStyle {
-    @Environment(\.colorScheme) private var colorScheme
-    func makeBody(configuration: Configuration) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            configuration.label.font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
-            configuration.content.frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(AppSurface.panel(colorScheme), in: RoundedRectangle(cornerRadius: 19))
-        .glassEffect(.regular, in: .rect(cornerRadius: 19))
     }
 }
