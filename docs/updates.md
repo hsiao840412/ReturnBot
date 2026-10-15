@@ -4,13 +4,13 @@ App 使用 Sparkle 2.10.0。啟動時自動檢查，選單提供「檢查更新�
 
 完整更新歷史統一維護於 `packaging/RELEASE_NOTES.md`，每個版本使用 `v版本號`、空行及 `-` 條列，保留已確認的用詞，只描述功能變更。
 
-打包時會產生當次版本的 `dist/GITHUB_RELEASE_NOTES.md` 與完整歷史的 `dist/APP_RELEASE_NOTES.md`。App 更新視窗使用完整歷史；GitHub Release 使用 `gh release create v版本號 --notes-file dist/GITHUB_RELEASE_NOTES.md`，只顯示當次內容。
+打包時會產生當次版本的 `dist/GITHUB_RELEASE_NOTES.md` 與完整歷史的 `dist/APP_RELEASE_NOTES.md`。App 更新視窗使用完整歷史；GitHub Release 使用 `gh release create v版本號 --title "ReturnBot v版本號" --notes-file dist/GITHUB_RELEASE_NOTES.md`，只顯示當次內容。
 
 ## 建置與簽署
 
 1. 使用 Xcode，執行 `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer zsh scripts/package_macos.sh 版本號`。
 2. 執行 `python3 scripts/create_appcast.py 版本號`，以本機鑰匙圈 account `com.returnbot.app` 簽署更新 ZIP 與 appcast。
-3. GitHub Release `v版本號` 同時上傳 DMG、ZIP、appcast.xml，確認檔案完整後才發布為 latest。
+3. GitHub Release `v版本號` 同時上傳 DMG、ZIP、appcast.xml 與 `ConnectCode39.ttf`，確認檔案完整後才發布為 latest。
 
 來源：`https://github.com/hsiao840412/ReturnBot/releases/latest/download/appcast.xml`。每次發布都必須保留同一簽章金鑰、bundle id `com.returnbot.app` 與 `ReturnBot.app` 名稱。私密金鑰在發布者的 macOS 鑰匙圈中，不在原始碼或 App 內；更换電腦須安全移轉金鑰，不可直接產生另一把。
 
@@ -20,4 +20,4 @@ App 使用 Sparkle 2.10.0。啟動時自動檢查，選單提供「檢查更新�
 
 - `swift test --disable-sandbox --filter UpdateStateTests`：多視窗處理狀態、召回匯出後修改保護。
 - `create_appcast.py` 自動驗證產生的 ZIP 與 feed 簽章。
-- 發布後以 3.2.1 驗證能讀取正式 feed 並看到 3.2.2；安裝與重新啟動仍需實際操作測試。
+- 發布後確認公開下載、附件雜湊與最新版本來源正確，GitHub 只包含當次更新，appcast 包含完整歷史；實際安裝與重新啟動另行操作驗證。
