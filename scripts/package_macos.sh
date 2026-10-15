@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="${0:A:h}"
 project_root="${script_dir:h}"
-release_version="${1:-3.2.7}"
+release_version="${1:-4.0}"
 if [[ ! "${release_version}" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
     print -u2 "Invalid version"
     exit 1
@@ -14,7 +14,6 @@ helper_dist="${output_root}/helper-dist"
 app_path="${output_root}/ReturnBot.app"
 dmg_stage="${output_root}/dmg-stage"
 dmg_path="${output_root}/ReturnBot-${release_version}-arm64.dmg"
-asset_catalog="${output_root}/AppIcon.xcassets"
 asset_output="${output_root}/icon-output"
 icon_partial_plist="${output_root}/AppIconPartial.plist"
 swift_cache="/tmp/returnbot-swift-cache"
@@ -29,28 +28,17 @@ if [[ ! -x "${project_root}/.venv/bin/pyinstaller" ]]; then
 fi
 
 mkdir -p "${output_root}" "${swift_cache}" "${clang_cache}"
-rm -rf "${helper_work}" "${helper_dist}" "${app_path}" "${dmg_stage}" "${dmg_path}" "${asset_catalog}" "${asset_output}" "${icon_partial_plist}"
+rm -rf "${helper_work}" "${helper_dist}" "${app_path}" "${dmg_stage}" "${dmg_path}" "${asset_output}" "${icon_partial_plist}"
 
-icon_set="${asset_catalog}/AppIcon.appiconset"
-mkdir -p "${icon_set}" "${asset_output}"
-cp "${project_root}/packaging/AppIconContents.json" "${icon_set}/Contents.json"
-sips -z 16 16 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_16x16.png" >/dev/null
-sips -z 32 32 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_16x16@2x.png" >/dev/null
-sips -z 32 32 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_32x32.png" >/dev/null
-sips -z 64 64 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_32x32@2x.png" >/dev/null
-sips -z 128 128 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_128x128.png" >/dev/null
-sips -z 256 256 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_128x128@2x.png" >/dev/null
-sips -z 256 256 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_256x256.png" >/dev/null
-sips -z 512 512 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_256x256@2x.png" >/dev/null
-sips -z 512 512 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_512x512.png" >/dev/null
-sips -z 1024 1024 "${project_root}/ReturnBotIcon-flat.png" --out "${icon_set}/icon_512x512@2x.png" >/dev/null
+"${project_root}/.venv/bin/python" "${script_dir}/release_notes.py" "${release_version}"
+mkdir -p "${asset_output}"
 xcrun actool \
     --compile "${asset_output}" \
     --platform macosx \
     --minimum-deployment-target 26.0 \
     --app-icon AppIcon \
     --output-partial-info-plist "${icon_partial_plist}" \
-    "${asset_catalog}"
+    "${project_root}/packaging/AppIcon.icon"
 
 "${project_root}/.venv/bin/python" -m PyInstaller \
     --noconfirm \
@@ -67,12 +55,14 @@ env \
 mkdir -p "${app_path}/Contents/MacOS" "${app_path}/Contents/Resources"
 cp "${project_root}/.build/release/ReturnBotMac" "${app_path}/Contents/MacOS/ReturnBot"
 cp -R "${helper_dist}/ReturnBotHelper" "${app_path}/Contents/Resources/ReturnBotHelper"
-cp "${asset_output}/AppIcon.icns" "${app_path}/Contents/Resources/MyIcon.icns"
+cp "${asset_output}/AppIcon.icns" "${app_path}/Contents/Resources/AppIcon.icns"
+cp "${asset_output}/Assets.car" "${app_path}/Contents/Resources/Assets.car"
 cp "${project_root}/packaging/Info.plist" "${app_path}/Contents/Info.plist"
-"${project_root}/.venv/bin/python" - "${app_path}/Contents/Info.plist" "${release_version}" <<'PYINFO'
+"${project_root}/.venv/bin/python" - "${app_path}/Contents/Info.plist" "${release_version}" "${icon_partial_plist}" <<'PYINFO'
 import plistlib, sys
 from pathlib import Path
 p = Path(sys.argv[1]); info = plistlib.loads(p.read_bytes())
+info.update(plistlib.loads(Path(sys.argv[3]).read_bytes()))
 info['CFBundleShortVersionString'] = info['CFBundleVersion'] = sys.argv[2]
 assert info.get('SUPublicEDKey'), 'Missing update signing public key'
 p.write_bytes(plistlib.dumps(info))

@@ -2,21 +2,9 @@
 
 App 使用 Sparkle 2.10.0。啟動時自動檢查，選單提供「檢查更新…」與自動檢查開關。下載與安裝需要使用者點選；處理中或未匯出的召回案件會阻止直接退出。
 
-## 3.2.7
+完整更新歷史統一維護於 `packaging/RELEASE_NOTES.md`，每個版本使用 `v版本號`、空行及 `-` 條列，保留已確認的用詞，只描述功能變更。
 
-- 一般退料與寄銷召回改為橫向工作介面，加入左側作業功能列、固定頁首與狀態列。
-- 一般退料採退料類型、CSV 匯入與製作結果的寬版配置；寄銷召回採並排價格表與輸入區，明細改用可編輯資料表。
-- 調整介面用詞，保留文件產出、零價確認、人工核對及匯出流程。
-- 預設視窗 1280 × 800，最小 1100 × 700；最低系統版本維持 macOS 26。
-
-## 3.2.6
-
-一般 KBB 與單獨鋰電池 KBB 的 Invoice「Returns」欄位，將 ePacking List 的「預期退回」內容轉成以下代碼；ePacking List 保留原始內容，其他值維持原樣。
-
-- 已知的壞板 → KBB
-- 良好零件退貨（診斷） → DIAG
-- 良好零件退貨 (UOB) → GPR
-- 抵達時失效 → DOA
+打包時會產生當次版本的 `dist/GITHUB_RELEASE_NOTES.md` 與完整歷史的 `dist/APP_RELEASE_NOTES.md`。App 更新視窗使用完整歷史；GitHub Release 使用 `gh release create v版本號 --notes-file dist/GITHUB_RELEASE_NOTES.md`，只顯示當次內容。
 
 ## 建置與簽署
 

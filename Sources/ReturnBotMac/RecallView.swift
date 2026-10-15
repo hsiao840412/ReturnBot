@@ -126,8 +126,7 @@ final class RecallModel: ObservableObject {
     }
 
     private var libraryURL: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ReturnBot/recall-prices.json")
+        AppFileLocations.recallLibraryURL
     }
 
     init() {
@@ -245,44 +244,48 @@ struct RecallView: View {
     @State private var importingPrices = false
     @State private var importingImage = false
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack(spacing: 18) {
-                    Label("每單上限 USD 7,500", systemImage: "shippingbox")
-                    Label("美金單價四捨五入", systemImage: "dollarsign.circle")
-                    Spacer()
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                HStack(alignment: .top, spacing: 18) {
-                    priceCard
-                    inputCard
-                }
-                detailCard
-                Button { Task { await model.calculate() } } label: {
-                    HStack {
-                        Text("預覽分單")
-                        Spacer()
-                        Image(systemName: "arrow.right")
-                    }.frame(maxWidth: .infinity).padding(.vertical, 4)
-                }
-                .buttonStyle(.glassProminent).controlSize(.large)
-                .disabled(model.rows.isEmpty)
-                if !model.message.isEmpty {
-                    Label(model.message, systemImage: model.outputPath != nil ? "checkmark.circle.fill" : "info.circle")
-                        .font(.callout).foregroundStyle(model.outputPath != nil ? Color.green : Color.secondary)
-                        .textSelection(.enabled)
-                }
-                if let result = model.result { resultCard(result) }
+    @State private var step: RecallStep = .prepare
+
+    private enum RecallStep: Int, CaseIterable {
+        case prepare = 1, review, save
+        var title: String {
+            switch self {
+            case .prepare: "準備資料"
+            case .review: "核對零件明細"
+            case .save: "確認分單與儲存"
             }
-            .padding(.horizontal, 30).padding(.top, 24).padding(.bottom, 30)
+        }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                ForEach(RecallStep.allCases, id: \.rawValue) { item in
+                    Button { step = item } label: {
+                        WorkflowStepLabel(number: item.rawValue, title: item.title, selected: step == item,
+                                          complete: item == .prepare && !model.rows.isEmpty || item == .review && model.result != nil)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(item == .review && model.rows.isEmpty || item == .save && model.result == nil)
+                    .help(item == .save && model.result == nil ? "核對明細後，先按「查看分單結果」" : item.title)
+                }
+            }
+            .padding(.horizontal, 30).padding(.vertical, 12)
+            Divider()
+            workspace.frame(maxWidth: .infinity, maxHeight: .infinity)
+            Divider()
+            actionFooter
         }
         .buttonStyle(.glass).controlSize(.regular)
         .groupBoxStyle(WorkflowCardStyle()).textFieldStyle(.roundedBorder)
         .disabled(model.busy)
-        .onChange(of: model.caseNumber) { model.invalidate() }
-        .onChange(of: model.rate) { model.invalidate() }
-        .onChange(of: model.rows) { model.invalidate() }
+        .onAppear {
+            if model.result != nil { step = .save }
+            else if !model.rows.isEmpty { step = .review }
+        }
+        .onChange(of: model.caseNumber) { invalidatePreview() }
+        .onChange(of: model.rate) { invalidatePreview() }
+        .onChange(of: model.rows) { invalidatePreview() }
         .fileImporter(isPresented: $importingPrices, allowedContentTypes: [.commaSeparatedText, UTType(filenameExtension: "xlsx")!]) { result in
             if case .success(let url) = result { Task { await model.importPrices(url) } }
         }
@@ -299,13 +302,116 @@ struct RecallView: View {
                 }
             }
         }
-        .alert("請確認", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
-            Button("好") { model.error = nil }
+        .alert("請檢查資料", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+            Button("返回檢查") { model.error = nil }
         } message: { Text(model.error ?? "") }
     }
 
+    @ViewBuilder private var workspace: some View {
+        switch step {
+        case .prepare:
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    WorkflowNotice(title: "先準備價格表與本次要退回的零件",
+                                   detail: "填寫案件資料，再貼上料號與數量或匯入截圖。按「加入明細」後，到下一步逐項核對。")
+                    HStack(alignment: .top, spacing: 18) { priceCard; inputCard }
+                    if !model.message.isEmpty {
+                        Label(model.message, systemImage: "info.circle")
+                            .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 30).padding(.top, 18).padding(.bottom, 24)
+            }
+        case .review:
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("請逐項核對，再查看分單結果").font(.headline)
+                        Text("案件：\(model.caseNumber.isEmpty ? "尚未填寫" : model.caseNumber) · 匯率：\(model.rate.isEmpty ? "尚未填寫" : model.rate)")
+                            .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                    Spacer()
+                    Button("修改案件／加入零件", systemImage: "pencil") { step = .prepare }
+                }
+                detailCard.frame(maxHeight: .infinity)
+            }
+            .padding(.horizontal, 30).padding(.vertical, 18)
+        case .save:
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    WorkflowNotice(title: model.outputPath == nil ? "確認分單內容後，再儲存文件" : "文件已儲存，請開啟檢查",
+                                   detail: model.outputPath == nil ? "系統依每單 USD 7,500 上限分單。請展開各單核對，確認下方勾選項目，再選擇儲存位置。" : "已建立 Excel 與 DHL 寄件清單。請依原作業流程檢查文件及裝箱資料。",
+                                   symbol: model.outputPath == nil ? "doc.text.magnifyingglass" : "folder.badge.checkmark",
+                                   color: model.outputPath == nil ? .orange : .green)
+                    if let result = model.result { resultCard(result) }
+                }
+                .padding(.horizontal, 30).padding(.top, 18).padding(.bottom, 24)
+            }
+        }
+    }
+
+    private var actionFooter: some View {
+        HStack(spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(footerTitle).font(.callout.weight(.semibold))
+                Text(footerDetail).font(.caption).foregroundStyle(.secondary)
+                    .lineLimit(2).help(footerDetail)
+            }
+            Spacer(minLength: 12)
+            switch step {
+            case .prepare:
+                Button("前往核對明細", systemImage: "arrow.right") { step = .review }
+                    .buttonStyle(.glassProminent).disabled(model.rows.isEmpty)
+            case .review:
+                Button("上一步") { step = .prepare }
+                Button("查看分單結果", systemImage: "arrow.right") {
+                    Task {
+                        await model.calculate()
+                        if model.result != nil { step = .save }
+                    }
+                }
+                .buttonStyle(.glassProminent).disabled(model.rows.isEmpty)
+            case .save:
+                Button("返回核對明細") { step = .review }
+                if let path = model.outputPath {
+                    Button("再次儲存…") { chooseOutput() }.disabled(!model.reviewed)
+                    Button("開啟已儲存的文件", systemImage: "arrow.up.forward.app") {
+                        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+                    }.buttonStyle(.glassProminent)
+                } else {
+                    Button("選擇資料夾並儲存…", systemImage: "folder") { chooseOutput() }
+                        .buttonStyle(.glassProminent).disabled(!model.reviewed)
+                }
+            }
+        }
+        .controlSize(.large).padding(.horizontal, 30).padding(.vertical, 16)
+    }
+
+    private var footerTitle: String {
+        if model.busy { return "正在處理，請稍候…" }
+        switch step {
+        case .prepare: return model.rows.isEmpty ? "尚未加入零件明細" : "已加入 \(model.rows.count) 筆零件明細"
+        case .review: return incompleteCount > 0 ? "還有 \(incompleteCount) 筆資料需要補齊" : "共 \(model.rows.count) 筆，請確認內容"
+        case .save: return model.outputPath != nil ? "文件已儲存" : model.reviewed ? "已勾選核對項目，可選擇儲存位置" : "請先核對內容並勾選確認項目"
+        }
+    }
+
+    private var footerDetail: String {
+        switch step {
+        case .prepare:
+            return !model.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "輸入區仍有文字，請確認是否已按「加入明細」。" : "加入明細後，按右側按鈕進行核對。"
+        case .review: return "可直接修改表格；需要補資料時，返回上一步。"
+        case .save: return "每單含 Excel 文件、外箱標籤與 DHL 寄件清單（CSV）。"
+        }
+    }
+
+    private func invalidatePreview() {
+        model.invalidate()
+        if step == .save { step = .review }
+    }
+
     private var priceCard: some View {
-        GroupBox("01  價格表與案件") {
+        GroupBox("價格表與案件資料") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .top, spacing: 10) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -328,7 +434,7 @@ struct RecallView: View {
                     WorkflowField(title: "召回單號") {
                         TextField("例如 NAR9521123", text: $model.caseNumber).accessibilityLabel("召回單號")
                     }
-                    WorkflowField(title: "匯率 · TWD / USD") {
+                    WorkflowField(title: "匯率 · 1 美金等於多少台幣") {
                         TextField("1 美金等於多少台幣", text: $model.rate).accessibilityLabel("本次匯率")
                             .monospacedDigit()
                     }
@@ -350,7 +456,7 @@ struct RecallView: View {
     }
 
     private var inputCard: some View {
-        GroupBox("02  加入退回零件") {
+        GroupBox("加入零件清單") {
             VStack(alignment: .leading, spacing: 12) {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 12) { imageButtons; Spacer(minLength: 0); addBlankButton }
@@ -370,6 +476,12 @@ struct RecallView: View {
                     .background(AppSurface.input(colorScheme), in: .rect(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color(nsColor: .separatorColor)))
                     .accessibilityLabel("待加入的料號與數量")
+                    .overlay(alignment: .topLeading) {
+                        if model.input.isEmpty {
+                            Text("貼上料號與數量，或使用上方截圖辨識。\n例如：TA661-42901 2")
+                                .font(.callout).foregroundStyle(.tertiary).padding(12).allowsHitTesting(false)
+                        }
+                    }
                 Text("一行一筆，例如 TA661-42901 2。截圖可分次加入，不會自動合併重複料號。")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
@@ -387,17 +499,17 @@ struct RecallView: View {
     }
 
     private var addBlankButton: some View {
-        Button("新增空白列", systemImage: "plus") {
+        Button("手動新增一筆", systemImage: "plus") {
             model.rows.append(RecallLine(part: "", quantity: "", description: "", twd: "", weight: model.weight, country: model.country))
             model.invalidate()
         }
     }
 
     private var detailCard: some View {
-        GroupBox("03  核對明細") {
+        GroupBox("核對要退回的零件") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Text("商品描述原文會同時用於 Invoice 與 DHL。")
+                    Text("請核對料號、數量、單價、重量、原產地及商品描述。")
                         .font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Text("\(model.rows.count) 筆").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -411,14 +523,24 @@ struct RecallView: View {
                         Label("\(incompleteCount) 筆待補齊數量、價格或商品描述", systemImage: "exclamationmark.triangle.fill")
                             .font(.callout).foregroundStyle(.orange)
                     }
-                    ForEach(model.rows.filter(isZeroDollar)) { row in
-                        Toggle("\(row.part.isEmpty ? "未填料號" : row.part)：確認以 0 美金申報", isOn: line(row).zeroPriceConfirmed)
-                            .font(.callout).foregroundStyle(.orange)
+                    if !zeroDollarRows.isEmpty {
+                        Text("以下零件的美金單價為 0，請逐筆確認：")
+                            .font(.callout.weight(.semibold)).foregroundStyle(.orange)
+                        ScrollView {
+                            LazyVStack(alignment: .leading, spacing: 10) {
+                                ForEach(zeroDollarRows) { row in
+                                    Toggle("\(row.part.isEmpty ? "未填料號" : row.part)：確認以 0 美金申報", isOn: line(row).zeroPriceConfirmed)
+                                        .font(.callout).foregroundStyle(.orange)
+                                }
+                            }
+                        }.frame(height: min(60, CGFloat(zeroDollarRows.count) * 30))
                     }
                 }
             }
         }
     }
+
+    private var zeroDollarRows: [RecallLine] { model.rows.filter(isZeroDollar) }
 
     private var incompleteCount: Int {
         model.rows.filter { $0.quantity.isEmpty || $0.twd.isEmpty || $0.description.isEmpty }.count
@@ -498,13 +620,13 @@ struct RecallView: View {
             }.width(32)
         }
         .tableStyle(.inset)
-        .frame(height: min(360, max(180, CGFloat(model.rows.count) * 56 + 40)))
+        .frame(minHeight: 100, maxHeight: .infinity)
         .background(AppSurface.panel(colorScheme), in: .rect(cornerRadius: 12))
         .clipShape(.rect(cornerRadius: 12))
     }
 
     private func resultCard(_ result: RecallResult) -> some View {
-        GroupBox("04  分單與匯出") {
+        GroupBox("分單結果與人工核對") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Label("\(result.groups.count) 組分單", systemImage: "shippingbox")
@@ -524,15 +646,8 @@ struct RecallView: View {
                 Text("每單含 KGB Invoice、外箱標籤與 DHL CSV；預設每單一箱，毛重與尺寸請裝箱後填寫。")
                     .font(.caption).foregroundStyle(.secondary)
                 Divider()
-                Toggle("已核對數量、價格、描述、重量與原產地", isOn: $model.reviewed)
-                HStack(spacing: 12) {
-                    Spacer()
-                    if let path = model.outputPath {
-                        Button("打開結果", systemImage: "arrow.up.forward.app") { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
-                    }
-                    Button("選擇資料夾並匯出", systemImage: "square.and.arrow.up") { chooseOutput() }
-                        .buttonStyle(.glassProminent).disabled(!model.reviewed)
-                }
+                Toggle("我已逐項核對數量、價格、商品描述、重量與原產地", isOn: $model.reviewed)
+
             }
         }
     }
@@ -542,7 +657,7 @@ struct RecallView: View {
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
-        panel.prompt = "匯出至此"
+        panel.prompt = "儲存至此"
         if panel.runModal() == .OK, let url = panel.url {
             Task {
                 let access = url.startAccessingSecurityScopedResource()

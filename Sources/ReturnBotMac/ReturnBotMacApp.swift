@@ -34,7 +34,7 @@ struct ReturnBotHome: View {
             VStack(spacing: 0) {
                 WorkflowHeader(
                     title: recall ? "寄銷召回" : "一般退料",
-                    subtitle: recall ? "整理零件、核對價格，完成分單與匯出" : "選擇退料類型與 ePacking List，製作 Excel 文件"
+                    subtitle: recall ? "準備資料 → 核對零件明細 → 確認分單與儲存文件" : "依序選擇退料方式、加入清單，再製作並核對文件"
                 )
                 Divider()
                 if recall {
@@ -70,6 +70,9 @@ struct ReturnBotHome: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("ReturnBot").font(.system(size: 20, weight: .bold, design: .rounded))
                     Text("自動生成Excel文件").font(.caption).foregroundStyle(.secondary)
+                    if AppFileLocations.isPreview {
+                        Text("行政介面試用版").font(.caption2.weight(.medium)).foregroundStyle(.blue)
+                    }
                 }
             }
             VStack(alignment: .leading, spacing: 8) {
@@ -80,9 +83,10 @@ struct ReturnBotHome: View {
             }
             Spacer()
             VStack(alignment: .leading, spacing: 12) {
-                Label(runner.isRunning || recallModel.busy ? "作業處理中" : "",
-                      systemImage: runner.isRunning || recallModel.busy ? "hourglass" : "desktopcomputer")
-                    .font(.caption).foregroundStyle(.secondary)
+                if runner.isRunning || recallModel.busy {
+                    Label("作業處理中", systemImage: "hourglass")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Divider()
                 Button(updates.lastUpdateError == nil ? "檢查更新…" : "重試檢查更新…", systemImage: "arrow.triangle.2.circlepath") {
                     updates.checkForUpdates()
@@ -132,13 +136,24 @@ struct ReturnBotHome: View {
             )
         } else {
             WorkflowStatusBar(
-                text: runner.errorMessage ?? runner.status,
-                symbol: runner.errorMessage != nil ? "exclamationmark.triangle.fill" : runner.outputPath != nil ? "checkmark.circle.fill" : "info.circle",
-                color: runner.errorMessage != nil ? .red : runner.outputPath != nil ? .green : .secondary,
+                text: generalStatus,
+                symbol: runner.errorMessage != nil ? "exclamationmark.triangle.fill" : runner.outputPath != nil ? "doc.text.magnifyingglass" : "info.circle",
+                color: runner.errorMessage != nil ? .red : runner.outputPath != nil ? .orange : .secondary,
                 busy: runner.isRunning,
-                detail: "輸出至下載項目"
+                detail: "儲存至\(AppFileLocations.outputFolderLabel)"
             )
         }
+    }
+
+    private var generalStatus: String {
+        if let error = runner.errorMessage { return error }
+        if runner.isRunning { return runner.status }
+        if runner.outputPath != nil {
+            return runner.isCurrentResult(returnType: returnType, csvURL: csvURL)
+                ? "文件已製作，請開啟 Excel 人工核對"
+                : "退料方式或清單已變更，請重新製作文件"
+        }
+        return csvURL == nil ? "等待加入本次退料清單" : "確認退料方式與清單後，即可製作文件"
     }
 }
 

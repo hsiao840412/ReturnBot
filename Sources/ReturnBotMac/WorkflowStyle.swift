@@ -100,3 +100,44 @@ struct WorkflowStatusBar: View {
         .padding(.horizontal, 30).padding(.vertical, 12)
     }
 }
+
+/// One sentence explains what to do next; the icon supplements the wording.
+struct WorkflowNotice: View {
+    let title: String
+    let detail: String
+    var symbol = "arrow.right.circle.fill"
+    var color: Color = .blue
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: symbol).font(.title3).foregroundStyle(color)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title).font(.callout.weight(.semibold))
+                Text(detail).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14).frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.08), in: .rect(cornerRadius: 12))
+    }
+}
+
+struct WorkflowStepLabel: View {
+    let number: Int
+    let title: String
+    let selected: Bool
+    var complete = false
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: complete ? "checkmark.circle.fill" : "\(number).circle.fill")
+                .font(.title3)
+            Text(title).font(.callout.weight(selected ? .semibold : .regular))
+        }
+        .foregroundStyle(selected ? Color.blue : complete ? Color.green : Color.secondary)
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(selected ? Color.blue.opacity(0.09) : Color.clear, in: .rect(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+}

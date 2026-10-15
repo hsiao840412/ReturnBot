@@ -1,6 +1,16 @@
 import AppKit
 import Foundation
 
+struct GenerationInput: Equatable {
+    let returnType: ReturnType
+    let csvURL: URL
+
+    init(returnType: ReturnType, csvURL: URL) {
+        self.returnType = returnType
+        self.csvURL = csvURL.standardizedFileURL
+    }
+}
+
 @MainActor
 final class ReturnBotRunner: ObservableObject {
     @Published var isRunning = false
@@ -8,12 +18,20 @@ final class ReturnBotRunner: ObservableObject {
     @Published var outputPath: String?
     @Published var errorMessage: String?
     @Published var warnings: [String] = []
+    @Published private(set) var generatedFor: GenerationInput?
+    @Published private(set) var generatedAt: Date?
 
     private var process: Process?
     private var finalResult: [String: Any]?
     private var bufferedOutput = ""
     private var bufferedError = ""
     private var securityScopedURL: URL?
+    private var activeInput: GenerationInput?
+
+    func isCurrentResult(returnType: ReturnType, csvURL: URL?) -> Bool {
+        guard outputPath != nil, let csvURL else { return false }
+        return generatedFor == GenerationInput(returnType: returnType, csvURL: csvURL)
+    }
 
     private let runtimeOverride: (executable: URL, argumentsPrefix: [String], workingDirectory: URL)?
 
@@ -46,6 +64,9 @@ final class ReturnBotRunner: ObservableObject {
         isRunning = true
         status = "正在準備文件..."
         outputPath = nil
+        generatedFor = nil
+        generatedAt = nil
+        activeInput = GenerationInput(returnType: returnType, csvURL: csvURL)
         errorMessage = nil
         warnings = []
         bufferedOutput = ""
@@ -65,6 +86,9 @@ final class ReturnBotRunner: ObservableObject {
         task.currentDirectoryURL = runtime.workingDirectory
         task.executableURL = runtime.executable
         task.arguments = runtime.argumentsPrefix + ["--type", returnType.cliValue, "--csv", csvURL.path]
+        if let directory = AppFileLocations.generationOutputDirectory {
+            task.arguments?.append(contentsOf: ["--output-directory", directory.path])
+        }
 
         let output = Pipe()
         task.standardOutput = output
@@ -100,6 +124,8 @@ final class ReturnBotRunner: ObservableObject {
             warnings = payload["warnings"] as? [String] ?? []
             if payload["success"] as? Bool == true && exitCode == 0 {
                 outputPath = payload["outputPath"] as? String
+                generatedFor = activeInput
+                generatedAt = Date()
                 errorMessage = nil
                 status = "生成完成"
                 finish()

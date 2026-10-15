@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Sign a packaged release with the ReturnBot key in the local macOS Keychain."""
+from release_notes import generate
 import email.utils
 import pathlib
 import plistlib
@@ -29,7 +30,8 @@ ET.SubElement(item, 'pubDate').text = email.utils.formatdate(usegmt=True)
 ET.SubElement(item, f'{{{ns}}}version').text = version
 ET.SubElement(item, f'{{{ns}}}shortVersionString').text = version
 ET.SubElement(item, f'{{{ns}}}minimumSystemVersion').text = info['LSMinimumSystemVersion']
-ET.SubElement(item, 'description').text = '更新一般退料與寄銷召回介面：左側作業功能列、寬版工作區、固定頁首與狀態列，以及可編輯召回明細資料表；同步調整介面用詞。保留既有文件產出、人工核對與匯出流程。'
+ET.SubElement(item, 'description', {f'{{{ns}}}format': 'markdown'}).text = generate(version)
+ET.SubElement(item, f'{{{ns}}}fullReleaseNotesLink').text = 'https://github.com/hsiao840412/ReturnBot/blob/main/packaging/RELEASE_NOTES.md'
 ET.SubElement(item, 'enclosure', {
     'url': f'https://github.com/hsiao840412/ReturnBot/releases/download/v{version}/{archive.name}',
     'length': str(archive.stat().st_size), 'type': 'application/octet-stream',
